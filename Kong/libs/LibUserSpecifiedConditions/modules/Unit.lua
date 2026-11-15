@@ -233,11 +233,14 @@ LibUSC:RegisterParameter("Unit is Casting", {
 })
 
 LibUSC:RegisterParameter("Unit is Mounted", { 
-    version = 2,
+    version = 3,
     type = "Truth",
     category = CATEGORY,
     description = "True when the player-controlled character is mounted",
-    Events = {
+    Events = WOW_PROJECT_ID == WOW_PROJECT_MAINLINE and {
+        "PLAYER_MOUNT_DISPLAY_CHANGED",
+        "PLAYER_ENTERING_WORLD",
+    } or {
         "COMPANION_UPDATE",
         "SPELL_UPDATE_USABLE",
     },
@@ -248,7 +251,9 @@ LibUSC:RegisterParameter("Unit is Mounted", {
     end,
     
     OnEvent = function(self, event, arg1)
-		if ( event == "COMPANION_UPDATE" and arg1 == "MOUNT" ) then
+		if ( event == "PLAYER_MOUNT_DISPLAY_CHANGED" or event == "PLAYER_ENTERING_WORLD" ) then
+			self:SetValue()
+		elseif ( event == "COMPANION_UPDATE" and arg1 == "MOUNT" ) then
 			self._check = true
 		elseif ( event == "SPELL_UPDATE_USABLE" and self._check ) then
 			self._check = false
