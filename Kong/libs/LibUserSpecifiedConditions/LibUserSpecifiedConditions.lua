@@ -1,4 +1,4 @@
-local LibUSC = LibStub and LibStub:NewLibrary("LibUserSpecifiedConditions", 4)
+local LibUSC = LibStub and LibStub:NewLibrary("LibUserSpecifiedConditions", 5)
 if not LibUSC then return end -- no upgrade necessary
 
 local pairs = _G.pairs;
@@ -245,17 +245,10 @@ function LibUSC.BaseParameter:RemoveListener(arg1, arg2)
     end
 end
 
-local TempCallback, TempParams
-local function FireValueChanged()
-    TempCallback(unpack(TempParams))
-end
-
 function LibUSC.BaseParameter:FireValueChanged()
     for Callback, Instances in pairs(self.ValueListeners) do
-        TempCallback = Callback
         for Instance, Params in pairs(Instances) do
-            TempParams = Params
-            xpcall(FireValueChanged, geterrorhandler())
+            xpcall(Callback, geterrorhandler(), unpack(Params))
         end
     end
 end
@@ -309,14 +302,9 @@ function LibUSC.BaseParameter:RemoveStructureListener(Callback)
     self.StructureListeners[Callback] = nil
 end
 
-local function FireStructureChanged()
-    TempCallback(unpack(TempParams))
-end
-
 function LibUSC.BaseParameter:FireStructureChanged()
     for Callback, Params in pairs(self.StructureListeners) do
-        TempCallback, TempParams = Callback, Params
-        xpcall(FireStructureChanged, geterrorhandler())
+        xpcall(Callback, geterrorhandler(), unpack(Params))
     end
 end
 
