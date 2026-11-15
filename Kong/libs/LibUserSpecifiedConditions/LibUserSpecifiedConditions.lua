@@ -1,4 +1,4 @@
-local LibUSC = LibStub and LibStub:NewLibrary("LibUserSpecifiedConditions", 5)
+local LibUSC = LibStub and LibStub:NewLibrary("LibUserSpecifiedConditions", 6)
 if not LibUSC then return end -- no upgrade necessary
 
 local pairs = _G.pairs;
@@ -159,7 +159,7 @@ function LibUSC.BaseParameter:SetParameter(index, Parameter, preservePrevious)
     assert(type(index) == "number", "Bad param #1 (number expected, got "..tostring(index)..")")
     assert(type(Parameter) == "table", "Bad param #2 (table expected, got "..tostring(Parameter)..")")
   
-    previousParam = self.Parameters[index]
+    local previousParam = self.Parameters[index]
     
     -- Remove the old parameter
     if previousParam then
