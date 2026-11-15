@@ -109,7 +109,7 @@ function Kong_OverrideAlpha(region, override)
 	assert(Kong_Frames[region] ~= nil)
 	local state = AlphaOverrides[region]
 
-	if ( override ) then
+	if ( override and Kong_Settings.enabled ) then
 		if ( state ~= nil ) then return end
 		state = {
 			original = rawget(region, "SetAlpha"),
@@ -377,16 +377,17 @@ end
 
 function A.Enable()
 	Kong_Settings.enabled = true
-	for Frame in pairs(Kong_Frames) do
+	for Frame, setting in pairs(Kong_Frames) do
+		Kong_OverrideAlpha(Frame, setting.overrideAlpha)
 		Kong_CalculateFadeOut(Frame)
 	end
 end
 
 function A.Disable()
-	for Frame in pairs(Kong_Frames) do
-		Kong_Fade(Frame, 1, 1, 0)
-	end
 	Kong_Settings.enabled = false
+	for Frame in pairs(Kong_Frames) do
+		RestoreFrame(Frame)
+	end
 end
 
 function Kong_RenameFrame(region, newIndex)
