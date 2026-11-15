@@ -1,4 +1,4 @@
-local LibUSC = LibStub and LibStub:NewLibrary("LibUserSpecifiedConditions", 3)
+local LibUSC = LibStub and LibStub:NewLibrary("LibUserSpecifiedConditions", 4)
 if not LibUSC then return end -- no upgrade necessary
 
 local pairs = _G.pairs;
@@ -306,12 +306,7 @@ function LibUSC.BaseParameter:AddStructureListener(Callback, ...)
 end
 
 function LibUSC.BaseParameter:RemoveStructureListener(Callback)
-    for i, Listener in ipairs(self.StructureListeners) do
-        if Listener == Callback then
-            tremove(self.StructureListeners, i)
-            break
-        end
-    end
+    self.StructureListeners[Callback] = nil
 end
 
 local function FireStructureChanged()
