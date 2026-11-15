@@ -126,6 +126,21 @@ function A.FadeIn(region, condition)
 	end
 end
 
+local function GetFadeSpeed(trigger, seconds)
+	local distance = math.abs(trigger.alphaIn - trigger.alphaOut)
+	if ( distance == 0 ) then return 0 end
+	if not ( type(seconds) == "number" and seconds > 0 and seconds < math.huge ) then
+		return math.huge
+	end
+	return distance / seconds
+end
+
+local function GetFadeDuration(currentAlpha, endAlpha, speed)
+	if ( speed == 0 ) then return 0 end
+	local duration = math.abs(currentAlpha - endAlpha) / speed
+	return duration >= 0 and duration < math.huge and duration or 0
+end
+
 function A.CalculateFadeIn(region)
 	local setting = Kong_Frames[region]
 	local currentAlpha = region:GetAlpha()
@@ -136,8 +151,8 @@ function A.CalculateFadeIn(region)
 		if ( trigger.refs > 0 ) then
 			chosenTrigger = chosenTrigger or trigger
 			
-			local speed = math.abs(trigger.alphaIn - trigger.alphaOut) / trigger.secondsIn
-			local otherSpeed = math.abs(chosenTrigger.alphaIn - chosenTrigger.alphaOut) / chosenTrigger.secondsIn
+			local speed = GetFadeSpeed(trigger, trigger.secondsIn)
+			local otherSpeed = GetFadeSpeed(chosenTrigger, chosenTrigger.secondsIn)
 			
 			if ( trigger.alphaIn > chosenTrigger.alphaIn or (trigger.alphaIn == chosenTrigger.alphaIn and speed > otherSpeed) ) then
 				chosenTrigger = trigger
@@ -147,8 +162,8 @@ function A.CalculateFadeIn(region)
 	
 	if ( chosenTrigger ~= nil ) then
 		local endAlpha = chosenTrigger.alphaIn
-		local speed = math.abs(chosenTrigger.alphaIn - chosenTrigger.alphaOut) / chosenTrigger.secondsIn
-		local duration = math.abs(currentAlpha - endAlpha) / speed
+		local speed = GetFadeSpeed(chosenTrigger, chosenTrigger.secondsIn)
+		local duration = GetFadeDuration(currentAlpha, endAlpha, speed)
 		
 		Kong_Fade(region, currentAlpha, endAlpha, duration)
 	end
@@ -158,8 +173,15 @@ function A.FadeOut(region, condition)
 	condition.refs = condition.refs - 1
 	assert(condition.refs >= 0, "ref < 0 for region: " .. tostring(region:GetName() or region))
 	if ( condition.refs == 0 ) then
-		local rate = (condition.alphaOut - condition.alphaIn) / condition.secondsOut
-		local displacement = (condition.alphaIn - region:GetAlpha()) / rate
+		local speed = GetFadeSpeed(condition, condition.secondsOut)
+		local displacement = 0
+		if ( speed > 0 and speed < math.huge ) then
+			local rate = condition.alphaOut > condition.alphaIn and speed or -speed
+			local offset = (condition.alphaIn - region:GetAlpha()) / rate
+			if ( offset > -math.huge and offset < math.huge ) then
+				displacement = offset
+			end
+		end
 		condition.lastFadeTime = GetTime() + displacement
 		Kong_CalculateFadeOut(region)
 	end
@@ -185,8 +207,8 @@ function Kong_CalculateFadeOut(region)
 			local sinceTrue = now - trigger.lastFadeTime
 			local otherSinceTrue = now - chosenTrigger.lastFadeTime
 			
-			local speed = math.abs(trigger.alphaOut - trigger.alphaIn) / trigger.secondsOut
-			local otherSpeed = math.abs(chosenTrigger.alphaOut - chosenTrigger.alphaIn) / chosenTrigger.secondsOut
+			local speed = GetFadeSpeed(trigger, trigger.secondsOut)
+			local otherSpeed = GetFadeSpeed(chosenTrigger, chosenTrigger.secondsOut)
 
 			if ( sinceTrue < otherSinceTrue or (sinceTrue == otherSinceTrue and speed < otherSpeed) ) then
 				chosenTrigger = trigger
@@ -195,8 +217,8 @@ function Kong_CalculateFadeOut(region)
 	end
 
 	if ( chosenTrigger ~= nil ) then
-		local speed = math.abs(chosenTrigger.alphaOut - chosenTrigger.alphaIn) / chosenTrigger.secondsOut
-		duration = math.abs(endAlpha - currentAlpha) / speed
+		local speed = GetFadeSpeed(chosenTrigger, chosenTrigger.secondsOut)
+		duration = GetFadeDuration(currentAlpha, endAlpha, speed)
 		delay = chosenTrigger.secondsTillOut
 	end
 

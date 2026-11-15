@@ -39,6 +39,13 @@ end
 -- private methods
 
 
+function E.normalizeTime(value)
+	if ( type(value) == "number" and value >= 0 and value < math.huge ) then
+		return value
+	end
+	return 0
+end
+
 function E.constructAnimationGroup(self)
 	local group = self.frame:CreateFontString():CreateAnimationGroup()
 	local animation = group:CreateAnimation("Alpha")
@@ -70,10 +77,11 @@ function P.isAListener(self, event, obj) R.EventDispatcher.isAListener(self.even
 
 function P.fade(self, region, fromAlpha, toAlpha, duration, smoothing, startDelay, endDelay)
 	fromAlpha = fromAlpha or self.frame.GetAlpha(region)
+	duration = E.normalizeTime(duration)
 	duration = duration == 0 and 0.001 or duration -- edge case: convert 0 to a millisecond
 	smoothing = smoothing or "NONE"
-	startDelay = startDelay or 0
-	endDelay = endDelay or 0
+	startDelay = E.normalizeTime(startDelay)
+	endDelay = E.normalizeTime(endDelay)
 	
 	P.stopFade(self, region)
 	
