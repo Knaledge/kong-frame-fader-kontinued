@@ -14,7 +14,7 @@ R.Fader.addListener(FADER, "FADE_STARTED",
 		function(obj, event, region, fromAlpha, toAlpha, duration, smoothing, startDelay, endDelay)
 			local setting = Kong_Frames[region]
 			
-			if ( setting.hideAtZeroAlpha and region:GetAlpha() == 0 ) then
+			if ( setting and setting.hideAtZeroAlpha and region:GetAlpha() == 0 ) then
 				DUMMY_FRAME.Show(region)
 			end
 		end,
@@ -24,7 +24,7 @@ R.Fader.addListener(FADER, "FADE_FINISHED",
 		function(obj, event, region)
 			local setting = Kong_Frames[region]
 			
-			if ( setting.hideAtZeroAlpha and region:GetAlpha() == 0 ) then
+			if ( setting and setting.hideAtZeroAlpha and region:GetAlpha() == 0 ) then
 				DUMMY_FRAME.Hide(region)
 			end
 		end,
@@ -130,6 +130,16 @@ function Kong_Fade(region, fromAlpha, toAlpha, duration, startDelay)
 	if ( Kong_Settings.enabled and (KongConfig == nil or not KongConfig:IsShown()) ) then
 		R.Fader.fade(FADER, region, nil, toAlpha, duration, nil, startDelay)
 	end
+end
+
+local function RestoreFrame(region)
+	-- Finish cleanup before the frame's settings can be removed or replaced.
+	R.Fader.stopFade(FADER, region)
+	Kong_OverrideAlpha(region, false)
+	if ( Kong_Frames[region].hideAtZeroAlpha and region:GetAlpha() == 0 ) then
+		DUMMY_FRAME.Show(region)
+	end
+	DUMMY_FRAME.SetAlpha(region, 1)
 end
 
 function A.FadeIn(region, condition)
@@ -297,8 +307,7 @@ function Kong_UnregisterFrame(region)
 	for i = #Kong_Frames[region], 1, -1 do
 		Kong_RemoveTrigger(region, Kong_Frames[region][i])
 	end
-	Kong_OverrideAlpha(region, false)
-	Kong_Fade(region, 1, 1, 0)
+	RestoreFrame(region)
 	local index = Kong_Frames[region].index
 	for name, group in pairs(Kong_Settings.Groups) do
 		if ( group[index] ~= nil ) then
@@ -489,8 +498,7 @@ end
 
 function Kong_Unload()
 	for region, settings in pairs(Kong_Frames) do
-		Kong_OverrideAlpha(region, false)
-		Kong_Fade(region, 1, 1, 0)
+		RestoreFrame(region)
 		
 		for i, trigger in ipairs(settings) do
 			trigger.refs = nil
