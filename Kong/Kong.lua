@@ -103,13 +103,26 @@ LibUSC:RegisterParameter(MouseoverTypeName, {
 	value = false,
 })
 
+local AlphaOverrides = {}
+
 function Kong_OverrideAlpha(region, override)
 	assert(Kong_Frames[region] ~= nil)
+	local state = AlphaOverrides[region]
 
 	if ( override ) then
-		region.SetAlpha = function() end
-	else
-		region.SetAlpha = nil
+		if ( state ~= nil ) then return end
+		state = {
+			original = rawget(region, "SetAlpha"),
+			replacement = function() end,
+		}
+		AlphaOverrides[region] = state
+		region.SetAlpha = state.replacement
+	elseif ( state ~= nil ) then
+		-- Restore only the method Kong still owns, including an inherited default.
+		if ( rawget(region, "SetAlpha") == state.replacement ) then
+			region.SetAlpha = state.original
+		end
+		AlphaOverrides[region] = nil
 	end
 end
 
