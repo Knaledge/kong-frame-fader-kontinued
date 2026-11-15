@@ -3,6 +3,18 @@ if not LibUSC then return end
 
 local CATEGORY = "Text"
 
+local function FindSpellBookItem(spellName, spellBank, firstIndex, lastIndex)
+    for i = firstIndex, lastIndex do
+        local info = C_SpellBook.GetSpellBookItemInfo(i, spellBank)
+        if info and info.spellID ~= nil
+            and (info.itemType == Enum.SpellBookItemType.Spell
+                or info.itemType == Enum.SpellBookItemType.PetAction)
+            and info.name == spellName then
+            return i
+        end
+    end
+end
+
 LibUSC:RegisterParameter("User-Entered Text", { 
     version = 2,
     type = "Text",
@@ -71,6 +83,7 @@ LibUSC:RegisterParameter("Convert Text to Unit", {
 })
 
 LibUSC:RegisterParameter("Convert Text to Spell", { 
+    version = 2,
     type = "Spell",
     category = CATEGORY,
     configString = "Spell: {1}",
@@ -84,6 +97,20 @@ LibUSC:RegisterParameter("Convert Text to Spell", {
     
     Call = function(self)
         local spellName = self:GetParameter(1):GetValue()
+        if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines then
+            local spellBank = Enum.SpellBookSpellBank.Player
+            for skillLineIndex = 1, C_SpellBook.GetNumSpellBookSkillLines() do
+                local info = C_SpellBook.GetSpellBookSkillLineInfo(skillLineIndex)
+                if info then
+                    local index = FindSpellBookItem(spellName, spellBank,
+                        info.itemIndexOffset + 1, info.itemIndexOffset + info.numSpellBookItems)
+                    if index then
+                        return index
+                    end
+                end
+            end
+            return nil
+        end
         local _, _, offset, numspells = GetSpellTabInfo(GetNumSpellTabs())
         for i=1,offset+numspells do 
             local spellType, id = GetSpellBookItemInfo(i, "spell")
@@ -95,6 +122,7 @@ LibUSC:RegisterParameter("Convert Text to Spell", {
 })
 
 LibUSC:RegisterParameter("Convert Text to Pet Spell", { 
+    version = 2,
     type = "Pet Spell",
     category = CATEGORY,
     configString = "Pet Spell: {1}",
@@ -108,6 +136,10 @@ LibUSC:RegisterParameter("Convert Text to Pet Spell", {
     
     Call = function(self)
         local spellName = self:GetParameter(1):GetValue()
+        if C_SpellBook and C_SpellBook.HasPetSpells then
+            return FindSpellBookItem(spellName, Enum.SpellBookSpellBank.Pet,
+                1, C_SpellBook.HasPetSpells() or 0)
+        end
         for i=1,HasPetSpells() or 0,1 do 
             local spellType, id = GetSpellBookItemInfo(i, "pet")
             if spellType == "SPELL" and GetSpellInfo(id) == spellName then

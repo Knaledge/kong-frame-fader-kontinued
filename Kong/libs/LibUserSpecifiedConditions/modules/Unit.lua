@@ -554,6 +554,7 @@ LibUSC:RegisterParameter("Unit Power is Low", {
 })
 
 LibUSC:RegisterParameter("Unit in Range of Spell", {
+	version = 2,
 	type = "Truth",
 	category = CATEGORY,
 	description = "True when a specific unit is in range of the given spell",
@@ -576,6 +577,11 @@ LibUSC:RegisterParameter("Unit in Range of Spell", {
 			local bookType = self:GetParameter(1):GetType() == "Spell" and "spell" or "pet"
 			local unitId = self:GetParameter(2):GetValue()
 			
+			if C_SpellBook and C_SpellBook.IsSpellBookItemInRange then
+				local spellBank = bookType == "spell" and Enum.SpellBookSpellBank.Player
+					or Enum.SpellBookSpellBank.Pet
+				return C_SpellBook.IsSpellBookItemInRange(index, spellBank, unitId) == true
+			end
 			return IsSpellInRange(index, bookType, unitId) == 1 -- NOTE: IsSpellInRange returns: 1 = in range; 0 = not in range; nil = invalid or inapplicable arguments
 		end
 	end,
