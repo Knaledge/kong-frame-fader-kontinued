@@ -10,22 +10,68 @@ local R = A.CLASSES -- Class (R)epository
 
 local DUMMY_FRAME = CreateFrame("frame") -- used for references to avoid abundant rawget calls when dealing with dummy functions
 local FADER = R.Fader.construct()
+local HiddenFrames, PendingVisibility, PendingRestores = {}, {}, {}
+
+local function SetFrameShown(region, shown)
+	if not R.Fader.canAccess(FADER, region) then
+		PendingVisibility[region] = shown
+		return
+	end
+	if region.CanChangeProtectedState then
+		local allowed = region:CanChangeProtectedState()
+		if (issecretvalue and issecretvalue(allowed)) or not allowed then
+			PendingVisibility[region] = shown
+			return
+		end
+	end
+	PendingVisibility[region] = nil
+	if shown then
+		DUMMY_FRAME.Show(region)
+		HiddenFrames[region] = nil
+	else
+		DUMMY_FRAME.Hide(region)
+		HiddenFrames[region] = true
+	end
+end
+
+function A.ApplyPendingVisibility()
+	if Kong_Settings and Kong_Settings.enabled then
+		for region, setting in pairs(Kong_Frames) do
+			if setting.overrideAlpha then Kong_OverrideAlpha(region, true) end
+		end
+	end
+	for region in pairs(PendingRestores) do
+		if R.Fader.setAlpha(FADER, region, 1) then PendingRestores[region] = nil end
+	end
+	for region, shown in pairs(PendingVisibility) do
+		local setting = Kong_Frames[region]
+		local alpha = R.Fader.getAlpha(FADER, region)
+		if shown or (setting and setting.hideAtZeroAlpha and (alpha == nil or alpha == 0)) then
+			SetFrameShown(region, shown)
+		else
+			PendingVisibility[region] = nil
+		end
+	end
+end
+
 R.Fader.addListener(FADER, "FADE_STARTED", 
 		function(obj, event, region, fromAlpha, toAlpha, duration, smoothing, startDelay, endDelay)
 			local setting = Kong_Frames[region]
-			
-			if ( setting and setting.hideAtZeroAlpha and region:GetAlpha() == 0 ) then
-				DUMMY_FRAME.Show(region)
+			PendingRestores[region] = nil
+			PendingVisibility[region] = nil
+			if ( setting and setting.hideAtZeroAlpha
+				and (HiddenFrames[region] or R.Fader.getAlpha(FADER, region) == 0) ) then
+				SetFrameShown(region, true)
 			end
 		end,
 		{}
 )
 R.Fader.addListener(FADER, "FADE_FINISHED", 
-		function(obj, event, region)
+		function(obj, event, region, toAlpha)
 			local setting = Kong_Frames[region]
-			
-			if ( setting and setting.hideAtZeroAlpha and region:GetAlpha() == 0 ) then
-				DUMMY_FRAME.Hide(region)
+			local alpha = R.Fader.getAlpha(FADER, region)
+			if ( setting and setting.hideAtZeroAlpha and (alpha == 0 or (alpha == nil and toAlpha == 0)) ) then
+				SetFrameShown(region, false)
 			end
 		end,
 		{}
@@ -109,7 +155,7 @@ function Kong_OverrideAlpha(region, override)
 	assert(Kong_Frames[region] ~= nil)
 	local state = AlphaOverrides[region]
 
-	if ( override and Kong_Settings.enabled ) then
+	if ( override and Kong_Settings.enabled and R.Fader.canAccess(FADER, region) ) then
 		if ( state ~= nil ) then return end
 		state = {
 			original = rawget(region, "SetAlpha"),
@@ -128,7 +174,7 @@ end
 
 function Kong_Fade(region, fromAlpha, toAlpha, duration, startDelay)
 	if ( Kong_Settings.enabled and (KongConfig == nil or not KongConfig:IsShown()) ) then
-		R.Fader.fade(FADER, region, nil, toAlpha, duration, nil, startDelay)
+		R.Fader.fade(FADER, region, fromAlpha, toAlpha, duration, nil, startDelay)
 	end
 end
 
@@ -136,10 +182,23 @@ local function RestoreFrame(region)
 	-- Finish cleanup before the frame's settings can be removed or replaced.
 	R.Fader.stopFade(FADER, region)
 	Kong_OverrideAlpha(region, false)
-	if ( Kong_Frames[region].hideAtZeroAlpha and region:GetAlpha() == 0 ) then
-		DUMMY_FRAME.Show(region)
+	local reveal = HiddenFrames[region] or PendingVisibility[region] == true
+		or (Kong_Frames[region].hideAtZeroAlpha and R.Fader.getAlpha(FADER, region) == 0)
+	PendingVisibility[region] = nil
+	if reveal then
+		SetFrameShown(region, true)
 	end
-	DUMMY_FRAME.SetAlpha(region, 1)
+	if not R.Fader.setAlpha(FADER, region, 1) then PendingRestores[region] = true end
+end
+
+function Kong_UpdateFrameVisibility(region)
+	if not Kong_Frames[region].hideAtZeroAlpha then
+		local reveal = HiddenFrames[region] or PendingVisibility[region] == true
+		PendingVisibility[region] = nil
+		if reveal then SetFrameShown(region, true) end
+	elseif not R.Fader.isFading(FADER, region) and R.Fader.getAlpha(FADER, region) == 0 then
+		SetFrameShown(region, false)
+	end
 end
 
 function A.FadeIn(region, condition)
@@ -159,14 +218,14 @@ local function GetFadeSpeed(trigger, seconds)
 end
 
 local function GetFadeDuration(currentAlpha, endAlpha, speed)
-	if ( speed == 0 ) then return 0 end
+	if ( currentAlpha == nil or speed == 0 ) then return 0 end
 	local duration = math.abs(currentAlpha - endAlpha) / speed
 	return duration >= 0 and duration < math.huge and duration or 0
 end
 
 function A.CalculateFadeIn(region)
 	local setting = Kong_Frames[region]
-	local currentAlpha = region:GetAlpha()
+	local currentAlpha = R.Fader.getAlpha(FADER, region)
 	local chosenTrigger
 	
 	-- NOTE: choose the trigger with the highest alpha, with the fastest speed
@@ -198,9 +257,10 @@ function A.FadeOut(region, condition)
 	if ( condition.refs == 0 ) then
 		local speed = GetFadeSpeed(condition, condition.secondsOut)
 		local displacement = 0
-		if ( speed > 0 and speed < math.huge ) then
+		local currentAlpha = R.Fader.getAlpha(FADER, region)
+		if ( currentAlpha ~= nil and speed > 0 and speed < math.huge ) then
 			local rate = condition.alphaOut > condition.alphaIn and speed or -speed
-			local offset = (condition.alphaIn - region:GetAlpha()) / rate
+			local offset = (condition.alphaIn - currentAlpha) / rate
 			if ( offset > -math.huge and offset < math.huge ) then
 				displacement = offset
 			end
@@ -212,7 +272,7 @@ end
 
 function Kong_CalculateFadeOut(region)
 	local setting = Kong_Frames[region]
-	local currentAlpha = region:GetAlpha()
+	local currentAlpha = R.Fader.getAlpha(FADER, region)
 	local endAlpha = setting.TriggerDefaults.alphaOut
 	local duration = 0
 	local delay = setting.TriggerDefaults.secondsTillOut
@@ -220,7 +280,7 @@ function Kong_CalculateFadeOut(region)
 
 	for i, trigger in ipairs(setting) do
 		if ( trigger.refs > 0 ) then
-			if ( trigger.alphaIn >= currentAlpha ) then return end
+			if ( currentAlpha ~= nil and trigger.alphaIn >= currentAlpha ) then return end
 
 			endAlpha = math.max(endAlpha, trigger.alphaIn)
 		elseif ( trigger.lastFadeTime ~= nil ) then
@@ -450,6 +510,7 @@ function A.LoadFrames()
 				isFound
 				and region
 				and type(region.IsObjectType) == "function"
+				and R.Fader.canAccess(FADER, region)
 				and region:IsObjectType("Region") -- make sure it is a region; ticket #5
 				and not Kong_Frames[region]
 		) then
@@ -609,6 +670,8 @@ function A.OnEvent(self, event, arg1, ...)
 		KongUIFader:SetScript("OnUpdate", A.OnUpdate)
 	elseif event == "PLAYER_LOGOUT" then
 		xpcall(Kong_Unload, function(message) Kong_Settings.error = message.."\n"..debugstack() end)
+	elseif event == "PLAYER_REGEN_ENABLED" or event == "PLAYER_ENTERING_WORLD" then
+		A.ApplyPendingVisibility()
 	end
 end
 
@@ -636,3 +699,5 @@ KongUIFader:SetScript("OnEvent", A.OnEvent)
 KongUIFader:RegisterEvent("ADDON_LOADED")
 KongUIFader:RegisterEvent("PLAYER_LOGIN")
 KongUIFader:RegisterEvent("PLAYER_LOGOUT")
+KongUIFader:RegisterEvent("PLAYER_REGEN_ENABLED")
+KongUIFader:RegisterEvent("PLAYER_ENTERING_WORLD")

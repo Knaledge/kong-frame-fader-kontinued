@@ -1434,6 +1434,7 @@ function KongConfig_HideAtZeroAlpha_OnValueChanged(self)
 	
 	for frame in pairs(KongConfig_SelectedFrames) do
 		Kong_Frames[frame.uiFrame].hideAtZeroAlpha = self:GetValue()
+		Kong_UpdateFrameVisibility(frame.uiFrame)
 	end
 	
 	KongConfig_UpdateComponents()
