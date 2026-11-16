@@ -39,6 +39,19 @@ end
 -- private methods
 
 
+function E.normalizeTime(value)
+	if ( E.isPublicNumber(value) and value >= 0 ) then
+		return value
+	end
+	return 0
+end
+
+function E.isPublicNumber(value)
+	return not (issecretvalue and issecretvalue(value))
+		and type(value) == "number" and value == value
+		and value > -math.huge and value < math.huge
+end
+
 function E.constructAnimationGroup(self)
 	local group = self.frame:CreateFontString():CreateAnimationGroup()
 	local animation = group:CreateAnimation("Alpha")
@@ -57,6 +70,7 @@ end
 function E.tearDownAnimationGroup(self, group)
 	self.activeGroups[group.region] = nil
 	group.region = nil
+	group.snap = nil
 end
 
 
@@ -67,13 +81,42 @@ function P.addListener(self, event, handler, obj) R.EventDispatcher.addListener(
 function P.removeListener(self, event, obj) R.EventDispatcher.removeListener(self.events, event, obj) end
 function P.isAListener(self, event, obj) R.EventDispatcher.isAListener(self.events, event, obj) end
 
+function P.canAccess(self, region)
+	if (issecretvalue and issecretvalue(region)) or type(region) ~= "table" then return false end
+	local forbidden = region.IsForbidden and region:IsForbidden()
+	return not (issecretvalue and issecretvalue(forbidden)) and not forbidden
+end
+
+function P.getAlpha(self, region)
+	if not P.canAccess(self, region) then return nil end
+	local alpha = self.frame.GetAlpha(region)
+	if E.isPublicNumber(alpha) then return alpha end
+end
+
+function P.setAlpha(self, region, alpha)
+	if not P.canAccess(self, region) or not E.isPublicNumber(alpha) then return false end
+	self.frame.SetAlpha(region, alpha)
+	return true
+end
+
 
 function P.fade(self, region, fromAlpha, toAlpha, duration, smoothing, startDelay, endDelay)
-	fromAlpha = fromAlpha or self.frame.GetAlpha(region)
+	if not P.canAccess(self, region) or not E.isPublicNumber(toAlpha) then
+		P.stopFade(self, region)
+		return
+	end
+	if not E.isPublicNumber(fromAlpha) then fromAlpha = P.getAlpha(self, region) end
+	local snap = fromAlpha == nil
+	if snap then
+		-- Preserve the delay, then apply the target without reading restricted alpha.
+		fromAlpha = toAlpha
+		duration = 0
+	end
+	duration = E.normalizeTime(duration)
 	duration = duration == 0 and 0.001 or duration -- edge case: convert 0 to a millisecond
 	smoothing = smoothing or "NONE"
-	startDelay = startDelay or 0
-	endDelay = endDelay or 0
+	startDelay = E.normalizeTime(startDelay)
+	endDelay = E.normalizeTime(endDelay)
 	
 	P.stopFade(self, region)
 	
@@ -89,6 +132,7 @@ function P.fade(self, region, fromAlpha, toAlpha, duration, smoothing, startDela
 	
 	self.activeGroups[region] = group
 	group.region = region
+	group.snap = snap
 	
 	group:Play()
 end
@@ -135,13 +179,18 @@ function E.animationGroup_onFinshed(self, group)
 	local animation = group.animation
 	local toAlpha = animation:GetToAlpha()
 	
-	self.frame.SetAlpha(region, toAlpha)
+	local applied = P.setAlpha(self, region, toAlpha)
 	R.ObjectPool.release(self.groupPool, group)
-	R.EventDispatcher.dispatchEvent(self.events, "FADE_FINISHED", region)
+	R.EventDispatcher.dispatchEvent(self.events, applied and "FADE_FINISHED" or "FADE_STOPPED", region, toAlpha)
 end
 
 
 function E.animationGroup_onUpdate(self, group)
+	if not P.canAccess(self, group.region) then
+		P.stopFade(self, group.region)
+		return
+	end
+	if group.snap then return end
 	local animation = group.animation
 	local fromAlpha = animation:GetFromAlpha()
 	local displacement = animation:GetToAlpha() - fromAlpha

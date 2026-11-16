@@ -1,8 +1,11 @@
-local LibUSC = LibStub and LibStub:NewLibrary("LibUserSpecifiedConditions", 3)
+-- Keep legacy Kong's live conditions and subscriptions intact during migration.
+local LibUSC = LibStub and LibStub:NewLibrary("KongKontinuedConditions", 9)
 if not LibUSC then return end -- no upgrade necessary
 
 local pairs = _G.pairs;
 local ipairs = _G.ipairs;
+
+LibUSC.UNAVAILABLE = LibUSC.UNAVAILABLE or {}
 
 -- Client Interface --------------------------------------------------------------------------------
 function LibUSC:Create(name, ...) 
@@ -43,6 +46,7 @@ function LibUSC:Deflate(Param)
     
     Param.ValueListeners = nil
     Param.StructureListeners = nil
+    Param.unavailable = nil
 
     if Param.Parameters then
     
@@ -108,7 +112,7 @@ function LibUSC:Inflate(Param)
 			table.remove(Param.Parameters, i)
 		end
         
-        if Param.Call and not Param.value then
+        if Param.Call then
             xpcall(function() Param:SetValue() end, geterrorhandler())
         end
     end
@@ -159,7 +163,7 @@ function LibUSC.BaseParameter:SetParameter(index, Parameter, preservePrevious)
     assert(type(index) == "number", "Bad param #1 (number expected, got "..tostring(index)..")")
     assert(type(Parameter) == "table", "Bad param #2 (table expected, got "..tostring(Parameter)..")")
   
-    previousParam = self.Parameters[index]
+    local previousParam = self.Parameters[index]
     
     -- Remove the old parameter
     if previousParam then
@@ -245,17 +249,10 @@ function LibUSC.BaseParameter:RemoveListener(arg1, arg2)
     end
 end
 
-local TempCallback, TempParams
-local function FireValueChanged()
-    TempCallback(unpack(TempParams))
-end
-
 function LibUSC.BaseParameter:FireValueChanged()
     for Callback, Instances in pairs(self.ValueListeners) do
-        TempCallback = Callback
         for Instance, Params in pairs(Instances) do
-            TempParams = Params
-            xpcall(FireValueChanged, geterrorhandler())
+            xpcall(Callback, geterrorhandler(), unpack(Params))
         end
     end
 end
@@ -264,18 +261,40 @@ function LibUSC.BaseParameter:GetValue()
     return self.value
 end
 
+function LibUSC.BaseParameter:IsValueAvailable()
+    return not self.unavailable
+end
+
 function LibUSC.BaseParameter:SetValue(value)
-    if nil == value then
+    local unavailable
+    for _, Parameter in pairs(self.Parameters or {}) do
+        if Parameter.unavailable then
+            unavailable = true
+            break
+        end
+    end
+
+    if not unavailable and issecretvalue and issecretvalue(value) then
+        unavailable = true
+    elseif not unavailable and value == nil then
         local status, result = pcall(self.Call, self)
         if status then
             value = result
         else
             value = self.value
+            unavailable = self.unavailable
             geterrorhandler()(result)
         end 
     end
-    if value ~= self.value then
--- print(self.name, value)
+
+    if not unavailable then
+        unavailable = (issecretvalue and issecretvalue(value)) or rawequal(value, LibUSC.UNAVAILABLE)
+    end
+    unavailable = unavailable and true or nil
+    if unavailable then value = nil end
+
+    if unavailable ~= self.unavailable or value ~= self.value then
+        self.unavailable = unavailable
         self.value = value
         self:FireValueChanged()
     end
@@ -306,22 +325,12 @@ function LibUSC.BaseParameter:AddStructureListener(Callback, ...)
 end
 
 function LibUSC.BaseParameter:RemoveStructureListener(Callback)
-    for i, Listener in ipairs(self.StructureListeners) do
-        if Listener == Callback then
-            tremove(self.StructureListeners, i)
-            break
-        end
-    end
-end
-
-local function FireStructureChanged()
-    TempCallback(unpack(TempParams))
+    self.StructureListeners[Callback] = nil
 end
 
 function LibUSC.BaseParameter:FireStructureChanged()
     for Callback, Params in pairs(self.StructureListeners) do
-        TempCallback, TempParams = Callback, Params
-        xpcall(FireStructureChanged, geterrorhandler())
+        xpcall(Callback, geterrorhandler(), unpack(Params))
     end
 end
 
@@ -334,12 +343,12 @@ function LibUSC.BaseParameter:GetMenuOverrideString()
 end
 
 function LibUSC.BaseParameter:OnEvent(event)
-    self:SetValue(self:Call())
+    self:SetValue()
 end
 
 LibUSC.BaseParameter.updatePeriod = .1   
 function LibUSC.BaseParameter:OnUpdate(elapsed)
-    self:SetValue(self:Call())
+    self:SetValue()
 end
 
 function LibUSC.BaseParameter:Clone()
@@ -435,13 +444,15 @@ LibUSC.frame:SetScript("OnUpdate", function(_, elapsed)
     for Param, timer in pairs(LibUSC.UpdateListeners) do
         timer = timer - elapsed
         if timer <= 0 then
-            timer = Param.updatePeriod
+            -- Reset before dispatch so callbacks can remove or reschedule themselves.
+            LibUSC.UpdateListeners[Param] = Param.updatePeriod
             local result, errMsg = pcall(Param.OnUpdate, Param, elapsed)
             if not result then
                 geterrorhandler()(errMsg)
             end
+        else
+            LibUSC.UpdateListeners[Param] = timer
         end
-        LibUSC.UpdateListeners[Param] = timer
     end
 end)
 

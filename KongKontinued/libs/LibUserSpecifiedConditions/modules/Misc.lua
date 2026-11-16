@@ -1,4 +1,4 @@
-local LibUSC = LibStub and LibStub("LibUserSpecifiedConditions", true)
+local LibUSC = LibStub and LibStub("KongKontinuedConditions", true)
 if not LibUSC then return end
 
 local CATEGORY = nil
@@ -227,6 +227,7 @@ LibUSC:RegisterParameter("Player Gained Level", {
 })
 
 LibUSC:RegisterParameter("Frame Is Visible", {
+	version = 2,
 	type = "Truth",
 	category = CATEGORY,
 	description = "True when the given frame is visible",
@@ -243,8 +244,14 @@ LibUSC:RegisterParameter("Frame Is Visible", {
 		end
 		
 		local frame = self.Parameters[1]:GetValue()
-		
-		return frame ~= nil and frame:GetAlpha() > 0
+		if issecretvalue and issecretvalue(frame) then return LibUSC.UNAVAILABLE end
+		if frame == nil then return false end
+		if type(frame) ~= "table" or type(frame.GetAlpha) ~= "function" then return false end
+		local forbidden = frame.IsForbidden and frame:IsForbidden()
+		if (issecretvalue and issecretvalue(forbidden)) or forbidden then return LibUSC.UNAVAILABLE end
+		local alpha = frame:GetAlpha()
+		if issecretvalue and issecretvalue(alpha) then return LibUSC.UNAVAILABLE end
+		return alpha > 0
 	end,
 	
 	IsValid = function(self)

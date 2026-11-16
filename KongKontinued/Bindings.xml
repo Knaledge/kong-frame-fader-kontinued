@@ -1,0 +1,14 @@
+<Bindings>
+    <Binding name="KONGKONTINUED_ENABLE" description="Enable UI Fading" header="KONGKONTINUED">
+        KongKontinued_EnableCommandHandler();
+    </Binding>
+    <Binding name="KONGKONTINUED_DISABLE" description="Disable UI Fading">
+        KongKontinued_DisableCommandHandler();
+    </Binding>
+    <Binding name="KONGKONTINUED_TOGGLE" description="Toggle UI Fading On/Off">
+        KongKontinued_ToggleCommandHandler();
+    </Binding>
+    <Binding name="KONGKONTINUED_CONFIG" description="Open Config GUI">
+        SlashCmdList["KONGKONTINUED"]("");
+    </Binding>
+</Bindings>
