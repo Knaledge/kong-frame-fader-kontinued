@@ -2,8 +2,10 @@
 
 A Retail refresh of Xentaros's Kong / King Kong Frame Fader. This branch
 targets Retail 12.1.5 (Interface 120105). Forever compatibility is outside
-this branch's scope. Static and mocked runtime checks do not establish
-in-game compatibility; Retail gameplay validation is still pending.
+this branch's scope. On Retail 12.1.5, opening configuration and importing
+legacy settings have been user-confirmed working without errors through
+KI-5 R20. Static and mocked runtime checks cover additional failure paths;
+broader in-game behavior remains to be validated.
 
 The original source archive is [Kong 0.29 on CurseForge](https://www.curseforge.com/wow/addons/kingkongframefader/files/7534093).
 The initial repository seed preserves that archive's contents; subsequent
