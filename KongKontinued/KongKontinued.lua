@@ -159,7 +159,11 @@ StaticPopupDialogs["KONGKONTINUED_RESET"] = {
 	text = "Are you sure you want to delete all settings from the Kong profile \"%s\"?",
 	button1 = "Reset",
 	button2 = CANCEL,
-	OnAccept = function(self)
+	OnAccept = function(self, profile)
+		if profile ~= KongKontinued_Settings.profile then
+			KongKontinued_Warning("Current profile changed; no profile was reset")
+			return
+		end
 
 		KongKontinued_Unload()
 		KongKontinued_Profiles[KongKontinued_Settings.profile] = nil

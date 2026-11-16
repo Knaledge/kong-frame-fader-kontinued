@@ -2,7 +2,7 @@
 -- ConditionEditor
 -- An interface for configuring LibUSC conditions
 --------------------------------------------------------------------------------
-local Type, Version = "KongKontinuedConditionEditor", 4
+local Type, Version = "KongKontinuedConditionEditor", 5
 local AceGUI = LibStub and LibStub("AceGUI-3.0", true)
 if not AceGUI or (AceGUI:GetWidgetVersion(Type) or 0) >= Version then return end
 
@@ -16,15 +16,55 @@ local DISABLED_COLOR = "|cFF888888"
 
 local CANCEL = "|TInterface/Buttons/UI-GroupLoot-Pass-Up:0:0:0:1|t Cancel"
 
+local function IsValidInput(text, Parameter)
+    if not Parameter then return false end
+    if Parameter.type ~= "Number" then return text ~= "" end
+    local number = tonumber(text)
+    return number ~= nil and number == number and number > -math.huge and number < math.huge
+end
+
+local function EndValueEntry(data)
+    if data and data.widget and data.widget.valueEntry == data then
+        data.widget.valueEntry = nil
+        data.widget.selectedKey = nil
+    end
+end
+
+local function CloseValueEntry(widget)
+    local data = widget.valueEntry
+    if data then
+        EndValueEntry(data)
+        StaticPopup_Hide("KongKontinued_EnterValue", data)
+    end
+end
+
+local function UpdateInput(EditBox)
+    local dialog = EditBox:GetParent()
+    local Parameters = dialog.data and dialog.data.Parameters
+    if IsValidInput(EditBox:GetText(), Parameters and Parameters[1]) then
+        dialog:GetButton1():Enable()
+    else
+        dialog:GetButton1():Disable()
+    end
+end
+
 StaticPopupDialogs["KongKontinued_EnterValue"] = {
     text = "%s:",
     button1 = ACCEPT,
     button2 = CANCEL,
     OnShow = function(self, data)
         self:GetButton1():Disable()
+        local Parameter = data and data.Parameters and data.Parameters[1]
+        if Parameter then
+            self:GetEditBox():SetText(tostring(Parameter:GetValue() or ""))
+            self:GetEditBox():HighlightText()
+        end
+        UpdateInput(self:GetEditBox())
     end,
-    OnAccept = function(self, Parameters)
-        for _, Parameter in ipairs(Parameters) do
+    OnAccept = function(self, data)
+        if not data or not data.widget or data.widget.valueEntry ~= data then return end
+        if not IsValidInput(self:GetEditBox():GetText(), data.Parameters and data.Parameters[1]) then return end
+        for _, Parameter in ipairs(data.Parameters) do
             if "Number" == Parameter.type then
                 Parameter:SetValue(tonumber(self:GetEditBox():GetText()))
             else
@@ -32,31 +72,17 @@ StaticPopupDialogs["KongKontinued_EnterValue"] = {
             end
             Parameter:FireStructureChanged();
         end
-        self.widget.selectedKey = nil
+        EndValueEntry(data)
     end,
-    OnCancel  = function(self)
-        self.widget.selectedKey = nil
+    OnCancel = function(self, data)
+        EndValueEntry(data)
+    end,
+    OnHide = function(self, data)
+        EndValueEntry(data)
+        if data then data.widget = nil; data.Parameters = nil end
     end,
     hasEditBox = true,
-    EditBoxOnTextChanged = function(EditBox)
-        local self = EditBox:GetParent()
-        for _, Parameter in ipairs(self.data) do
-            if "Number" == Parameter.type then
-                if nil ~= tonumber(EditBox:GetText()) then
-                    self:GetButton1():Enable()
-                else
-                    self:GetButton1():Disable()
-                end
-            else
-                if "" ~= EditBox:GetText() then
-                    self:GetButton1():Enable()
-                else
-                    self:GetButton1():Disable()
-                end
-            end
-            break
-        end
-    end,
+    EditBoxOnTextChanged = UpdateInput,
     EditBoxOnEnterPressed = function(EditBox, Parameter)
         EditBox:GetParent():GetButton1():Click()
     end,
@@ -236,13 +262,10 @@ local function OnConditionChanged(Dropdown, _, value)
         end
     
         if UserEnteredParams then
-            local dialog = StaticPopup_Show("KongKontinued_EnterValue", Parameter:GetName())
-            if (dialog) then
-                dialog:GetEditBox():SetText(Parameter:GetValue())
-                dialog:GetEditBox():HighlightText()
-                dialog.widget = self
-                dialog.data = UserEnteredParams
-            end
+            CloseValueEntry(self)
+            local data = {widget = self, Parameters = UserEnteredParams}
+            self.valueEntry = data
+            StaticPopup_Show("KongKontinued_EnterValue", Parameter:GetName(), nil, data)
         end
     end
     
@@ -284,6 +307,7 @@ local Methods = {
     end,
     
     ["OnRelease"] = function(self)
+        CloseValueEntry(self)
         for i=#self.Conditions,1,-1 do
             self:RemoveCondition(self.Conditions[i])
         end
@@ -302,6 +326,7 @@ local Methods = {
     end,
     
     ["SetEnabled"] = function(self, enabled)
+        if not enabled then CloseValueEntry(self) end
         self.Editor:SetHyperlinksEnabled(enabled)
         self.Editor:EnableMouse(enabled)
         if #self.Conditions > 0 then
@@ -347,10 +372,11 @@ local Methods = {
     ["RemoveCondition"] = function(self, Condition)
         for i, v in ipairs(self.Conditions) do
             if Condition == v then
+                CloseValueEntry(self)
                 tremove(self.Conditions, i)
                 -- TODO should this check really be here?
                 if (Condition.RemoveStructureListener) then
-                    Condition:RemoveStructureListener(self)
+                    Condition:RemoveStructureListener(self.OnStructureChange)
                 end
             end
         end
@@ -361,7 +387,7 @@ local Methods = {
     end,
     
     ["OnStructureChange"] = function(self)
-        self:SetText(GenerateHypertext(self, " ", self.Conditions[1].Parameters[1]))
+        if self.Conditions[1] then self:SetText(GenerateHypertext(self, " ", self.Conditions[1].Parameters[1])) end
     end,
 }
 
@@ -432,6 +458,7 @@ local function Constructor()
     
     Editor.obj = widget
     Dropdown.obj = widget
+    Frame:SetScript("OnHide", function() CloseValueEntry(widget) end)
     
     return AceGUI:RegisterAsWidget(widget)
 end

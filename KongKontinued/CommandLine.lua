@@ -67,7 +67,7 @@ function A.ProfileCommandHandler(command, name)
 		end
 		table.sort(names)
 		for i, name in pairs(names) do
-			KongKontinued_Info(name)
+			KongKontinued_Info("%s", name)
 		end
 		KongKontinued_Info(#names .. " profile(s)")
 		
@@ -85,7 +85,7 @@ function A.ProfileCommandHandler(command, name)
 		A.ResetCommandHandler()
 
 	elseif ( command == "current" ) then
-		KongKontinued_Info("Current profile is: " .. KongKontinued_Settings.profile)
+		KongKontinued_Info("Current profile is: %s", KongKontinued_Settings.profile)
 		
 	else
 		KongKontinued_Error(UNKNOWN_OPTION, command, "profile")
@@ -94,7 +94,7 @@ end
 
 
 function A.ResetCommandHandler()
-	StaticPopup_Show("KONGKONTINUED_RESET", KongKontinued_Settings.profile)
+	StaticPopup_Show("KONGKONTINUED_RESET", KongKontinued_Settings.profile, nil, KongKontinued_Settings.profile)
 end
 
 
@@ -178,7 +178,7 @@ function A.CommandHandler(args)
 		print(HELP_PROFILE)
 		print(HELP_IMPORT)
 	else
-		KongKontinued_Error('"' .. command .. '"' .. INVALID_COMMAND)
+		KongKontinued_Error("%s", '"' .. command .. '"' .. INVALID_COMMAND)
 	end
 end
 
