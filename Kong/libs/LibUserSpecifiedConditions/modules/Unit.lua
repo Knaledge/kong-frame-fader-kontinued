@@ -298,6 +298,14 @@ LibUSC:RegisterParameter("Unit is Unit", {
     end,
 })
 
+local function GetUnitFraction(current, maximum)
+    if issecretvalue and (issecretvalue(current) or issecretvalue(maximum)) then
+        return LibUSC.UNAVAILABLE
+    end
+    if maximum <= 0 then return nil end
+    return current / maximum
+end
+
 LibUSC:RegisterParameter("Unit Health", { 
     version = 2,
     type = "Number",
@@ -343,7 +351,7 @@ LibUSC:RegisterParameter("Unit Health Maximum", {
 })
 
 LibUSC:RegisterParameter("Unit Health (Percent)", { 
-    version = 2,
+    version = 3,
     type = "Number",
     category = CATEGORY,
     description = "The current percent health of a given unit",
@@ -355,7 +363,7 @@ LibUSC:RegisterParameter("Unit Health (Percent)", {
     
     Call = function(self)
         local unit = self.Parameters[1]:GetValue()
-        return UnitHealth(unit)/UnitHealthMax(unit)
+        return GetUnitFraction(UnitHealth(unit), UnitHealthMax(unit)) or 0
     end,
     
     OnEvent = function(self, event, unit)
@@ -366,7 +374,7 @@ LibUSC:RegisterParameter("Unit Health (Percent)", {
 })
 
 LibUSC:RegisterParameter("Unit Health is Low", { 
-    version = 1,
+    version = 2,
     type = "Truth",
     category = CATEGORY,
     description = "True when the current health of a given unit is below a specified threshold",
@@ -384,7 +392,9 @@ LibUSC:RegisterParameter("Unit Health is Low", {
     Call = function(self)
         local unit = self:GetParameter(1):GetValue()
         local percent = self:GetParameter(2):GetValue()
-        return UnitHealth(unit)/UnitHealthMax(unit) < percent/100
+        local fraction = GetUnitFraction(UnitHealth(unit), UnitHealthMax(unit))
+        if fraction == LibUSC.UNAVAILABLE then return fraction end
+        return fraction ~= nil and fraction < percent/100
     end,
     
     OnEvent = function(self, event, unit)
@@ -516,7 +526,7 @@ LibUSC:RegisterParameter("Unit Power Maximum", {
 })
 
 LibUSC:RegisterParameter("Unit Power (Percent)", { 
-    version = 4,
+    version = 5,
     type = "Number",
     category = CATEGORY,
     description = "The current percent power (mana, rage, etc.) of a given unit",
@@ -530,14 +540,14 @@ LibUSC:RegisterParameter("Unit Power (Percent)", {
     Call = function(self)
         local power = self.Parameters[1]:GetValue()
         local unit = self.Parameters[2]:GetValue()
-        return UnitPower(unit, power)/UnitPowerMax(unit, power)
+        return GetUnitFraction(UnitPower(unit, power), UnitPowerMax(unit, power)) or 0
     end,
     
     OnEvent = OnUnitPowerEvent,
 })
 
 LibUSC:RegisterParameter("Unit Power is Low", { 
-    version = 2,
+    version = 3,
     type = "Truth",
     category = CATEGORY,
     configString = "{1} of {2} below {3}%",
@@ -557,7 +567,9 @@ LibUSC:RegisterParameter("Unit Power is Low", {
         local power = self:GetParameter(1):GetValue()
         local unit = self:GetParameter(2):GetValue()
         local percent = self:GetParameter(3):GetValue()
-        return UnitPower(unit, power)/UnitPowerMax(unit, power) < percent/100
+        local fraction = GetUnitFraction(UnitPower(unit, power), UnitPowerMax(unit, power))
+        if fraction == LibUSC.UNAVAILABLE then return fraction end
+        return fraction ~= nil and fraction < percent/100
     end,
     
     OnEvent = OnUnitPowerEvent,

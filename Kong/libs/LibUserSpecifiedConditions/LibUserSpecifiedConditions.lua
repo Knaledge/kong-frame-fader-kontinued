@@ -1,8 +1,10 @@
-local LibUSC = LibStub and LibStub:NewLibrary("LibUserSpecifiedConditions", 6)
+local LibUSC = LibStub and LibStub:NewLibrary("LibUserSpecifiedConditions", 7)
 if not LibUSC then return end -- no upgrade necessary
 
 local pairs = _G.pairs;
 local ipairs = _G.ipairs;
+
+LibUSC.UNAVAILABLE = LibUSC.UNAVAILABLE or {}
 
 -- Client Interface --------------------------------------------------------------------------------
 function LibUSC:Create(name, ...) 
@@ -43,6 +45,7 @@ function LibUSC:Deflate(Param)
     
     Param.ValueListeners = nil
     Param.StructureListeners = nil
+    Param.unavailable = nil
 
     if Param.Parameters then
     
@@ -108,7 +111,7 @@ function LibUSC:Inflate(Param)
 			table.remove(Param.Parameters, i)
 		end
         
-        if Param.Call and not Param.value then
+        if Param.Call then
             xpcall(function() Param:SetValue() end, geterrorhandler())
         end
     end
@@ -257,18 +260,40 @@ function LibUSC.BaseParameter:GetValue()
     return self.value
 end
 
+function LibUSC.BaseParameter:IsValueAvailable()
+    return not self.unavailable
+end
+
 function LibUSC.BaseParameter:SetValue(value)
-    if nil == value then
+    local unavailable
+    for _, Parameter in pairs(self.Parameters or {}) do
+        if Parameter.unavailable then
+            unavailable = true
+            break
+        end
+    end
+
+    if not unavailable and issecretvalue and issecretvalue(value) then
+        unavailable = true
+    elseif not unavailable and value == nil then
         local status, result = pcall(self.Call, self)
         if status then
             value = result
         else
             value = self.value
+            unavailable = self.unavailable
             geterrorhandler()(result)
         end 
     end
-    if value ~= self.value then
--- print(self.name, value)
+
+    if not unavailable then
+        unavailable = (issecretvalue and issecretvalue(value)) or rawequal(value, LibUSC.UNAVAILABLE)
+    end
+    unavailable = unavailable and true or nil
+    if unavailable then value = nil end
+
+    if unavailable ~= self.unavailable or value ~= self.value then
+        self.unavailable = unavailable
         self.value = value
         self:FireValueChanged()
     end

@@ -5,7 +5,7 @@ local CATEGORY = "Logic"
 
 -- The hidden root parameter for all conditions
 LibUSC:RegisterParameter("Condition", { 
-    version = 2,
+    version = 3,
     type = "Truth",
     isHidden = true,
     ParameterTypes = {
@@ -18,7 +18,8 @@ LibUSC:RegisterParameter("Condition", {
     end,
     
     IsMet = function(self)
-        return self:GetValue()
+        -- Unreadable rules retain their configured shown state.
+        return not self:IsValueAvailable() or self:GetValue()
     end,
 })
 	

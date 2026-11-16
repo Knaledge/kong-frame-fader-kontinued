@@ -151,6 +151,9 @@ end
 
 local function ParamValueToString(Param)
 
+    if not Param:IsValueAvailable() then
+        return "|cFF888888Current Value: Unavailable|r"
+    end
     local value = Param:GetValue(value)
     if type(value) == "string" then
         return "|cff888888Current Value: \""..value.."\"|r"

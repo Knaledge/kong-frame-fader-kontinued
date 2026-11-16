@@ -83,7 +83,7 @@ LibUSC:RegisterParameter("Multiplication", {
 })
 
 LibUSC:RegisterParameter("Division", { 
-    version = 2,
+    version = 3,
     type = "Number",
     category = CATEGORY,
     description = "The quotient of two numbers",
@@ -94,6 +94,8 @@ LibUSC:RegisterParameter("Division", {
     configString = "{1} \195\183 {2}",
     
     Call = function(self)
-        return self.Parameters[1]:GetValue() / self.Parameters[2]:GetValue()
+        local denominator = self.Parameters[2]:GetValue()
+        if denominator == 0 then return LibUSC.UNAVAILABLE end
+        return self.Parameters[1]:GetValue() / denominator
     end,
 })
