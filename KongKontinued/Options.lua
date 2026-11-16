@@ -1,5 +1,5 @@
 local N, A = ...
-local category, enabledSetting, profileSetting
+local category, enabledSetting, profileSetting, copySetting
 local defaultsHiddenForKong = false
 
 BINDING_NAME_KONGKONTINUED_CONFIG = "Open Options"
@@ -28,6 +28,7 @@ end
 function A.RefreshOptions()
     if enabledSetting then enabledSetting:NotifyUpdate() end
     if profileSetting then profileSetting:NotifyUpdate() end
+    if copySetting then copySetting:NotifyUpdate() end
 end
 
 local function OpenCompanion(show)
@@ -66,12 +67,15 @@ local function ConfigureInitializer(initializer)
     initializer:AddEvaluateStateFrameEvent("PLAYER_REGEN_ENABLED")
 end
 
-local function GetProfileOptions()
+local function GetProfileOptions(copyFrom)
     local names = {}
     for name in pairs(KongKontinued_Profiles) do names[#names + 1] = name end
     table.sort(names)
     local options = Settings.CreateControlTextContainer()
-    for _, name in ipairs(names) do options:Add(name, name) end
+    if copyFrom then options:Add("", "Select a source profile") end
+    for _, name in ipairs(names) do
+        if not copyFrom or name ~= KongKontinued_Settings.profile then options:Add(name, name) end
+    end
     return options:GetData()
 end
 
@@ -115,8 +119,30 @@ local function RegisterOptions()
             end
             C_Timer.After(0, A.RefreshOptions)
         end)
-    ConfigureInitializer(Settings.CreateDropdown(category, profileSetting, GetProfileOptions,
+    ConfigureInitializer(Settings.CreateDropdown(category, profileSetting, function() return GetProfileOptions(false) end,
         "Select an account-wide profile for this character"))
+
+    local add = CreateSettingsButtonInitializer("New profile", "Add Profile",
+        A.ShowAddProfile, "Create and select an empty profile with a new name", true)
+    ConfigureInitializer(add)
+    layout:AddInitializer(add)
+
+    copySetting = Settings.RegisterProxySetting(category, N .. "_COPY_PROFILE",
+        Settings.VarType.String, "Copy from", Settings.CannotDefault,
+        function() return "" end,
+        function(name)
+            if name ~= "" then A.ShowCopyProfile(name) end
+            C_Timer.After(0, A.RefreshOptions)
+        end)
+    local copy = Settings.CreateDropdown(category, copySetting, function() return GetProfileOptions(true) end,
+        "Replace the selected profile's configuration with an independent copy of another profile after confirmation")
+    ConfigureInitializer(copy)
+    copy:AddModifyPredicate(function()
+        for name in pairs(KongKontinued_Profiles) do
+            if name ~= KongKontinued_Settings.profile then return true end
+        end
+        return false
+    end)
 
     local import = CreateSettingsButtonInitializer("Legacy profiles", "Import Legacy Profiles",
         A.ShowLegacyImport, "Preview and import legacy Kong SavedVariables", true)

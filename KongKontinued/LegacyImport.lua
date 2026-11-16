@@ -346,6 +346,13 @@ local function profile(source, definitions, report)
     return out
 end
 
+-- Reuse the data-only validation/copy path for native profile operations.
+function Import.CopyProfile(source, definitions)
+    local ok, result = pcall(profile, source, definitions, {frames = 0, conditions = 0})
+    if ok then return result end
+    return nil, tostring(result)
+end
+
 function Import.Prepare(text, existing, definitions)
     local ok, result = pcall(function()
         expect(type(existing) == "table" and type(definitions) == "table", "Profile database or condition definitions unavailable")

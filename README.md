@@ -31,6 +31,21 @@ configured frames, conditions and groups. Blizzard's shared Defaults
 button is hidden for this category, and its default-setting operations do
 not change Kong's controls.
 
+**Add Profile** asks for a new name, creates an empty profile and selects
+it. Names are trimmed, lowercased and have whitespace replaced by
+underscores. Empty names, control characters, names over 128 bytes and
+existing names are rejected. The command `/kong profile create <name>`
+uses the same creation path.
+
+**Copy from** lists other profiles. Selecting a source asks for
+confirmation naming both profiles before replacing the selected profile's
+configuration. The destination keeps its name and this character's enabled
+state. The copy includes frames, fade settings, conditions and groups;
+it shares no configuration tables with the source. Runtime references
+are excluded, and the source remains unchanged. Characters sharing the
+destination profile are affected. Combat or changed profiles invalidate
+confirmation. Cancelling changes nothing.
+
 **Reset Profile** asks for confirmation naming the selected profile, then
 permanently clears all of its frames, fade settings, conditions and groups.
 The profile keeps its name, and this character's enabled state stays the
