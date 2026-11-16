@@ -24,8 +24,9 @@ selection. Its configuration companion loads on demand. Disable legacy
 Account-wide profiles use `KongKontinued_Profiles`; character selection and
 enabled state use `KongKontinued_Settings`. Both are declared only by the
 new main addon. Legacy `Kong_Profiles` and `Kong_Settings` are neither loaded
-nor written by Kontinued. Existing Kong key assignments have forwarding
-actions; new assignments appear under Kong Frame Fader Kontinued.
+nor written by Kontinued. Key bindings appear under Kong Frame Fader
+Kontinued. Legacy Kong assignments use different action IDs and must be
+reassigned there; Kontinued does not automatically rewrite saved bindings.
 
 ## Importing legacy Kong settings
 

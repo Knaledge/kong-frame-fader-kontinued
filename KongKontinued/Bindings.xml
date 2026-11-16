@@ -17,17 +17,4 @@
             KongKontinued_Error("Kong Kontinued Config is either disabled or not installed.");
         end
     </Binding>
-    <!-- Keep existing Kong key assignments without rewriting user bindings. -->
-    <Binding name="KONG_ENABLE" hidden="true">
-        KongKontinued_EnableCommandHandler();
-    </Binding>
-    <Binding name="KONG_DISABLE" hidden="true">
-        KongKontinued_DisableCommandHandler();
-    </Binding>
-    <Binding name="KONG_TOGGLE" hidden="true">
-        KongKontinued_ToggleCommandHandler();
-    </Binding>
-    <Binding name="KONG_CONFIG" hidden="true">
-        SlashCmdList["KONGKONTINUED"]("");
-    </Binding>
 </Bindings>
