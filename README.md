@@ -27,8 +27,19 @@ selection. Its configuration companion loads on demand. Disable legacy
 Native Options is also available under Settings > AddOns > Kong Frame
 Fader Kontinued. It provides a character-specific enable checkbox and
 current-profile selector. Profile switching retains the previous profile's
-configured frames, conditions and groups. Selecting defaults does not
-change the selected profile.
+configured frames, conditions and groups. Blizzard's shared Defaults
+button is hidden for this category, and its default-setting operations do
+not change Kong's controls.
+
+**Reset Profile** asks for confirmation naming the selected profile, then
+permanently clears all of its frames, fade settings, conditions and groups.
+The profile keeps its name, and this character's enabled state stays the
+same. Profiles are shared across characters, so this also clears the
+configuration used by any other characters selecting that profile. Other
+profiles and WoW settings are untouched. Cancelling changes nothing.
+`/kong reset` and `/kong profile reset` use the same confirmation. A reset
+is rejected if combat begins or the selected profile changes before
+confirmation.
 
 **Import Legacy Profiles** opens the existing previewed paste importer.
 **Advanced Config** opens the existing frame picker and rule editor.

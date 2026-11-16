@@ -1,5 +1,6 @@
 local N, A = ...
 local category, enabledSetting, profileSetting
+local defaultsHiddenForKong = false
 
 BINDING_NAME_KONGKONTINUED_CONFIG = "Open Options"
 
@@ -74,13 +75,24 @@ local function GetProfileOptions()
     return options:GetData()
 end
 
+local function UpdateDefaultsButton()
+    local button = SettingsPanel:GetSettingsList().Header.DefaultsButton
+    if SettingsPanel:GetCurrentCategory() == category then
+        defaultsHiddenForKong = true
+        button:Hide()
+    elseif defaultsHiddenForKong then
+        defaultsHiddenForKong = false
+        if not SettingsPanel.SearchBox:HasText() then button:Show() end
+    end
+end
+
 local function RegisterOptions()
     if category then return end
     local layout
     category, layout = Settings.RegisterVerticalLayoutCategory("Kong Frame Fader Kontinued")
 
     enabledSetting = Settings.RegisterProxySetting(category, N .. "_ENABLED",
-        Settings.VarType.Boolean, "Enable UI fading", true,
+        Settings.VarType.Boolean, "Enable UI fading", Settings.CannotDefault,
         function() return KongKontinued_Settings.enabled end,
         function(value)
             if CanConfigure() then
@@ -116,9 +128,23 @@ local function RegisterOptions()
     ConfigureInitializer(advanced)
     layout:AddInitializer(advanced)
 
+    local reset = CreateSettingsButtonInitializer("Profile configuration", "Reset Profile",
+        A.ResetCommandHandler, "Permanently clear all frames, fade settings, conditions and groups from the selected profile", true)
+    ConfigureInitializer(reset)
+    layout:AddInitializer(reset)
+
     Settings.RegisterAddOnCategory(category)
+    -- Retail exposes one shared Defaults button, with no per-category opt-out.
+    -- Hide it only for Kong, including when search clearing tries to show it.
+    SettingsPanel:GetSettingsList().Header.DefaultsButton:HookScript("OnShow", function(button)
+        if SettingsPanel:GetCurrentCategory() == category then
+            defaultsHiddenForKong = true
+            button:Hide()
+        end
+    end)
     SettingsPanel:HookScript("OnShow", A.RefreshOptions)
     hooksecurefunc(SettingsPanel, "DisplayCategory", function(_, selectedCategory)
+        UpdateDefaultsButton()
         if selectedCategory == category then
             CloseCompanionWindows()
             A.RefreshOptions()

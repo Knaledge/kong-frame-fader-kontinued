@@ -95,7 +95,16 @@ end
 
 
 function A.ResetCommandHandler()
-	StaticPopup_Show("KONGKONTINUED_RESET", KongKontinued_Settings.profile, nil, KongKontinued_Settings.profile)
+	if not KongKontinued_Initialized or InCombatLockdown() then
+		KongKontinued_Warning("Profile reset is unavailable before login or during combat")
+		return
+	end
+	if not KongKontinued_ConfirmLegacyDisabled() then return end
+	local name = KongKontinued_Settings.profile
+	StaticPopup_Show("KONGKONTINUED_RESET", name, nil, {
+		name = name,
+		profile = KongKontinued_Profiles[name],
+	})
 end
 
 

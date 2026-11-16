@@ -156,18 +156,29 @@ StaticPopupDialogs["KONGKONTINUED_DISABLE_LEGACY"] = {
 }
 
 StaticPopupDialogs["KONGKONTINUED_RESET"] = {
-	text = "Are you sure you want to delete all settings from the Kong profile \"%s\"?",
-	button1 = "Reset",
+	text = "Reset profile \"%s\"?\n\nThis permanently removes all configured frames, fade settings, conditions and groups from this profile. Any characters using this shared profile will be affected.\n\nOther profiles and WoW settings are unchanged. This cannot be undone.",
+	button1 = "Reset Profile",
 	button2 = CANCEL,
-	OnAccept = function(self, profile)
-		if profile ~= KongKontinued_Settings.profile then
+	OnAccept = function(self, target)
+		if not KongKontinued_Initialized or InCombatLockdown() then
+			KongKontinued_Warning("Profile reset is unavailable before login or during combat")
+			return
+		end
+		if type(target) ~= "table" or target.name ~= KongKontinued_Settings.profile
+			or target.profile ~= KongKontinued_Profiles[target.name] then
 			KongKontinued_Warning("Current profile changed; no profile was reset")
 			return
 		end
+		if not KongKontinued_ConfirmLegacyDisabled() then return end
+		if KongKontinuedConfig and KongKontinuedConfig:IsShown() then KongKontinuedConfig:Hide() end
+		if KongKontinuedLegacyImportWindow and KongKontinuedLegacyImportWindow:IsShown() then
+			KongKontinuedLegacyImportWindow:Hide()
+		end
 
 		KongKontinued_Unload()
-		KongKontinued_Profiles[KongKontinued_Settings.profile] = nil
+		KongKontinued_Profiles[target.name] = nil
 		A.LoadSettings()
+		if A.RefreshOptions then A.RefreshOptions() end
 
 		KongKontinued_Info(PROFILE_RESET, KongKontinued_Settings.profile)
 	end,
