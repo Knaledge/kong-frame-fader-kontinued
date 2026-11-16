@@ -167,8 +167,7 @@ end
 
 local LibUSC = LibStub("LibUserSpecifiedConditions", true)
 if not LibUSC then
-	KongKontinued_Error("Kong Kontinued does not appear to have been installed correctly. Note: A full restart of "
-			 .."World of Warcraft is required when upgrading from a previous version of Kong.")
+	KongKontinued_Error("Could not load LibUserSpecifiedConditions. Check the KongKontinued folder and bundled library files.")
 	return
 end
 

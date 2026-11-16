@@ -23,6 +23,7 @@ local NO_KONG_CONFIG = "Kong Kontinued Config is either disabled or not installe
 local HELP_COMMANDS = "|cFFBBBBFFKong Frame Fader Kontinued|r commands ( |cFF33FF99/kong|r ):"
 local HELP_TOGGLE = "|cFF33FF99enable / disable / toggle|r: enables or disables fading of the user interface."
 local HELP_PROFILE = "|cFF33FF99profile|r: manages saved Kong configurations and allows for configuration sharing between characters."
+local HELP_IMPORT = "|cFF33FF99import|r: previews and imports legacy Kong SavedVariables"
 local PROFILE_LOADED = "Profile %q loaded."
 local NOW_USING_PROFILE = "Now using profile %q."
 local PROFILE_ALREADY_EXISTS = "Profile %q already exists."
@@ -142,7 +143,7 @@ function A.CommandHandler(args)
 			print(HELP_COMMANDS)
 			print(HELP_TOGGLE)
 			print(HELP_PROFILE)
-		print("|cFF33FF99import|r: previews and imports legacy Kong SavedVariables")
+			print(HELP_IMPORT)
 		end
 	elseif ( KongKontinuedConfig and KongKontinuedConfig.frame:IsShown() ) then
 		KongKontinued_Error("The config screen must be closed to issue /kong commands.")
@@ -173,6 +174,7 @@ function A.CommandHandler(args)
 		print(HELP_COMMANDS)
 		print(HELP_TOGGLE)
 		print(HELP_PROFILE)
+		print(HELP_IMPORT)
 	else
 		KongKontinued_Error('"' .. command .. '"' .. INVALID_COMMAND)
 	end

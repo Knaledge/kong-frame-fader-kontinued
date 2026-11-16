@@ -271,6 +271,7 @@ local function condition(source, definitions, expected, report, depth)
     for key in pairs(source) do
         expect(key == "name" or key == "Parameters" or transient[key], "Unsupported condition field: " .. tostring(key))
     end
+    expect(source.Parameters == nil or type(source.Parameters) == "table", "Condition parameters must be a table")
     local parameters = source.Parameters or {}
     local count = arrayLength(parameters, "Condition parameters")
     local types = definition.ParameterTypes or {}
@@ -288,6 +289,8 @@ end
 local function profile(source, definitions, report)
     expect(type(source) == "table", "Each legacy profile must be a table")
     for key in pairs(source) do expect(key == "Frames" or key == "Groups" or key == "version", "Unsupported profile field: " .. tostring(key)) end
+    expect(source.Frames == nil or type(source.Frames) == "table", "Profile frames must be a table")
+    expect(source.Groups == nil or type(source.Groups) == "table", "Profile groups must be a table")
     local out = {Frames = {}, Groups = {}}
     local count = arrayLength(source.Frames or {}, "Profile frames")
     local indexes = {}
@@ -308,7 +311,7 @@ local function profile(source, definitions, report)
                 expect(key == "index" or key == "version" or key == "TriggerDefaults" or transient[key], "Unsupported frame field: " .. tostring(key))
             end
         end
-        expect(type(old.TriggerDefaults or {}) == "table", "Invalid trigger defaults")
+        expect(old.TriggerDefaults == nil or type(old.TriggerDefaults) == "table", "Invalid trigger defaults")
         for key, value in pairs(old.TriggerDefaults or {}) do
             expect(times[key] or alphas[key] or transient[key], "Unsupported trigger default: " .. tostring(key))
             if times[key] or alphas[key] then frame.TriggerDefaults[key] = timing(key, value) end
