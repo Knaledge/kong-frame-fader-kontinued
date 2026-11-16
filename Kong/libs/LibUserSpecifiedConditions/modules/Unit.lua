@@ -455,8 +455,30 @@ local POWER_NAMES = {
 "HOLY_POWER",
 }
 
+if WOW_PROJECT_ID == WOW_PROJECT_MAINLINE then
+    POWER_NAMES[4] = "COMBO_POINTS"
+    POWER_NAMES[8] = "LUNAR_POWER"
+    POWER_NAMES[10] = "ALTERNATE"
+    POWER_NAMES[11] = "MAELSTROM"
+    POWER_NAMES[12] = "CHI"
+    POWER_NAMES[13] = "INSANITY"
+    POWER_NAMES[16] = "ARCANE_CHARGES"
+    POWER_NAMES[17] = "FURY"
+    POWER_NAMES[18] = "PAIN"
+    POWER_NAMES[19] = "ESSENCE"
+end
+
+local function OnUnitPowerEvent(self, event, unit, power)
+    if unit ~= self:GetParameter(2):GetValue() then return end
+    local expectedPower = POWER_NAMES[self:GetParameter(1):GetValue()]
+    -- Unknown power types still refresh on this unit's power events.
+    if expectedPower == nil or power == expectedPower then
+        self:SetValue()
+    end
+end
+
 LibUSC:RegisterParameter("Unit Power", { 
-    version = 3,
+    version = 4,
     type = "Number",
     category = CATEGORY,
     description = "The current power level (mana, rage, etc.) of a given unit",
@@ -471,15 +493,11 @@ LibUSC:RegisterParameter("Unit Power", {
         return UnitPower(self.Parameters[2]:GetValue(), self.Parameters[1]:GetValue())
     end,
     
-    OnEvent = function(self, event, unit, power)
-        if (unit == self.Parameters[2]:GetValue()) and (power == POWER_NAMES[self.Parameters[1]:GetValue()]) then
-            self:SetValue()
-        end
-    end,
+    OnEvent = OnUnitPowerEvent,
 })
 
 LibUSC:RegisterParameter("Unit Power Maximum", { 
-    version = 3,
+    version = 4,
     type = "Number",
     category = CATEGORY,
     description = "The maximum power level (mana, rage, etc.) of a given unit",
@@ -494,15 +512,11 @@ LibUSC:RegisterParameter("Unit Power Maximum", {
         return UnitPowerMax(self.Parameters[2]:GetValue(), self.Parameters[1]:GetValue())
     end,
     
-    OnEvent = function(self, event, unit, power)
-        if (unit == self.Parameters[2]:GetValue()) and (power == POWER_NAMES[self.Parameters[1]:GetValue()]) then
-            self:SetValue()
-        end
-    end,
+    OnEvent = OnUnitPowerEvent,
 })
 
 LibUSC:RegisterParameter("Unit Power (Percent)", { 
-    version = 3,
+    version = 4,
     type = "Number",
     category = CATEGORY,
     description = "The current percent power (mana, rage, etc.) of a given unit",
@@ -519,15 +533,11 @@ LibUSC:RegisterParameter("Unit Power (Percent)", {
         return UnitPower(unit, power)/UnitPowerMax(unit, power)
     end,
     
-    OnEvent = function(self, event, unit, power)
-        if (unit == self.Parameters[2]:GetValue()) and (power == POWER_NAMES[self.Parameters[1]:GetValue()]) then
-            self:SetValue()
-        end
-    end,
+    OnEvent = OnUnitPowerEvent,
 })
 
 LibUSC:RegisterParameter("Unit Power is Low", { 
-    version = 1,
+    version = 2,
     type = "Truth",
     category = CATEGORY,
     configString = "{1} of {2} below {3}%",
@@ -550,12 +560,7 @@ LibUSC:RegisterParameter("Unit Power is Low", {
         return UnitPower(unit, power)/UnitPowerMax(unit, power) < percent/100
     end,
     
-    OnEvent = function(self, event, unit, power)
-        if (unit == self:GetParameter(2):GetValue()) 
-        and (power == POWER_NAMES[self:GetParameter(1):GetValue()]) then
-            self:SetValue()
-        end
-    end,
+    OnEvent = OnUnitPowerEvent,
 })
 
 LibUSC:RegisterParameter("Unit in Range of Spell", {
