@@ -204,7 +204,7 @@ LibUSC:RegisterParameter("Unit is Resting", {
 })
 
 LibUSC:RegisterParameter("Unit is Casting", { 
-    version = 2,
+    version = 3,
     type = "Truth",
     category = CATEGORY,
     description = "True when the given unit is casting",
@@ -213,6 +213,8 @@ LibUSC:RegisterParameter("Unit is Casting", {
         "UNIT_SPELLCAST_STOP", 
         "UNIT_SPELLCAST_CHANNEL_START",
         "UNIT_SPELLCAST_CHANNEL_STOP",
+        "PLAYER_REGEN_ENABLED",
+        "PLAYER_ENTERING_WORLD",
     },
     ParameterTypes = {
         "Unit",
@@ -220,14 +222,21 @@ LibUSC:RegisterParameter("Unit is Casting", {
     configString = "{1} is Casting",
     
     Call = function(self)
-        return (UnitCastingInfo(self.Parameters[1]:GetValue()) ~= nil)
-            or (UnitChannelInfo(self.Parameters[1]:GetValue()) ~= nil)
+        local unit = self.Parameters[1]:GetValue()
+        if C_Secrets and C_Secrets.ShouldUnitSpellCastingBeSecret and C_Secrets.ShouldUnitSpellCastingBeSecret(unit) then
+            return LibUSC.UNAVAILABLE
+        end
+        local casting = UnitCastingInfo(unit)
+        if issecretvalue and issecretvalue(casting) then return LibUSC.UNAVAILABLE end
+        if casting ~= nil then return true end
+        local channel = UnitChannelInfo(unit)
+        if issecretvalue and issecretvalue(channel) then return LibUSC.UNAVAILABLE end
+        return channel ~= nil
     end,
     
     OnEvent = function(self, event, unit)
-        if (unit == self.Parameters[1]:GetValue()) then
-            self:SetValue((event == "UNIT_SPELLCAST_START") 
-                       or (event == "UNIT_SPELLCAST_CHANNEL_START"))
+        if event == "PLAYER_REGEN_ENABLED" or event == "PLAYER_ENTERING_WORLD" or (unit == self.Parameters[1]:GetValue()) then
+            self:SetValue()
         end
     end,
 })
@@ -282,7 +291,7 @@ LibUSC:RegisterParameter("Unit Exists", {
 })
 
 LibUSC:RegisterParameter("Unit is Unit", { 
-    version = 2,
+    version = 3,
     type = "Truth",
     category = CATEGORY,
     description = "True when two units are the same "
@@ -294,7 +303,11 @@ LibUSC:RegisterParameter("Unit is Unit", {
     configString = "{1} is the same unit as {2}",
     
     Call = function(self)
-        return UnitIsUnit(self.Parameters[1]:GetValue(), self.Parameters[2]:GetValue())
+        local first, second = self.Parameters[1]:GetValue(), self.Parameters[2]:GetValue()
+        if C_Secrets and C_Secrets.CanCompareUnitTokens and not C_Secrets.CanCompareUnitTokens(first, second) then
+            return LibUSC.UNAVAILABLE
+        end
+        return UnitIsUnit(first, second)
     end,
 })
 
@@ -405,7 +418,7 @@ LibUSC:RegisterParameter("Unit Health is Low", {
 })
 
 LibUSC:RegisterParameter("Unit is Moving", { 
-    version = 2,
+    version = 3,
     type = "Truth",
     category = CATEGORY,
     description = "True when the given unit is in motion",
@@ -416,7 +429,9 @@ LibUSC:RegisterParameter("Unit is Moving", {
     configString = "{1} is Moving",
     
     Call = function(self)
-        return GetUnitSpeed(self.Parameters[1]:GetValue()) > 0
+        local speed = GetUnitSpeed(self.Parameters[1]:GetValue())
+        if issecretvalue and issecretvalue(speed) then return LibUSC.UNAVAILABLE end
+        return speed > 0
     end,
 })
 
@@ -437,7 +452,7 @@ LibUSC:RegisterParameter("Unit Speed", {
 })
 
 LibUSC:RegisterParameter("Unit Speed (Percent)", { 
-    version = 2,
+    version = 3,
     type = "Number",
     category = CATEGORY,
     description = "The current percent speed of the given unit, where running is 100%",
@@ -448,7 +463,9 @@ LibUSC:RegisterParameter("Unit Speed (Percent)", {
     configString = "Speed of {1}",
     
     Call = function(self)
-        return GetUnitSpeed(self.Parameters[1]:GetValue()) / 7
+        local speed = GetUnitSpeed(self.Parameters[1]:GetValue())
+        if issecretvalue and issecretvalue(speed) then return LibUSC.UNAVAILABLE end
+        return speed / 7
     end,
 })
 

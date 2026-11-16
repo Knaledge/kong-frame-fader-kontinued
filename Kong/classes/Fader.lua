@@ -82,6 +82,7 @@ function P.removeListener(self, event, obj) R.EventDispatcher.removeListener(sel
 function P.isAListener(self, event, obj) R.EventDispatcher.isAListener(self.events, event, obj) end
 
 function P.canAccess(self, region)
+	if (issecretvalue and issecretvalue(region)) or type(region) ~= "table" then return false end
 	local forbidden = region.IsForbidden and region:IsForbidden()
 	return not (issecretvalue and issecretvalue(forbidden)) and not forbidden
 end

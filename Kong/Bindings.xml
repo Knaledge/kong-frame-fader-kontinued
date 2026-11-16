@@ -9,7 +9,9 @@
         Kong_ToggleCommandHandler();
     </Binding>
     <Binding name="KONG_CONFIG" description="Open Config GUI">
-        if C_AddOns.LoadAddOn('KongConfig') then
+        if InCombatLockdown() then
+            Kong_Warning("Configuration cannot be opened during combat")
+        elseif C_AddOns.LoadAddOn('KongConfig') then
             KongConfig_Show()
         else
             Kong_Error("Kong Config is either disabled or not installed.");

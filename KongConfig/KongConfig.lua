@@ -82,8 +82,35 @@ end
 
 local Kong_ErrorOriginal
 local Kong_WarningOriginal
+local function IsPublic(value)
+    return not (issecretvalue and issecretvalue(value))
+end
+
+local function GetPickerGeometry(Frame)
+    if InCombatLockdown() or not Kong_CanAccessFrame(Frame) then return end
+    local restricted = Frame:IsAnchoringRestricted()
+    local shown = Frame:IsShown()
+    if not IsPublic(restricted) or restricted or not IsPublic(shown) or not shown then return end
+    local width, height = Frame:GetWidth(), Frame:GetHeight()
+    if not IsPublic(width) or not IsPublic(height) or type(width) ~= "number" or type(height) ~= "number" then return end
+    return width, height
+end
+
+local CombatWatcher = CreateFrame("Frame")
+CombatWatcher:RegisterEvent("PLAYER_REGEN_DISABLED")
+CombatWatcher:SetScript("OnEvent", function()
+    if KongConfig and KongConfig:IsShown() then
+        KongConfig:Hide()
+        Kong_Warning("Configuration closed for combat")
+    end
+end)
+
 function KongConfig_Show()
 
+    if InCombatLockdown() then
+        Kong_Warning("Configuration cannot be opened during combat")
+        return
+    end
     if (not KongConfig) or (not KongConfig:IsVisible()) then
     
         -- Display registered frames
@@ -105,7 +132,7 @@ function KongConfig_Show()
     -- Create the cover buttons
     KongConfig_CreateChildCoverButtons(UIParent)
     for Frame in pairs(Kong_Frames) do
-        local Parent = Frame:GetParent()
+        local Parent = Kong_GetFrameParent(Frame)
         if Parent ~= UIParent then
             KongConfig_CreateChildCoverButtons(Parent)
             
@@ -114,7 +141,7 @@ function KongConfig_Show()
                 if KongConfig_Frames[Parent] and not Kong_Frames[Parent] then
                     KongConfig_Frames[Parent]:Hide()
                 end
-                Parent = Parent:GetParent()
+                Parent = Kong_GetFrameParent(Parent)
             end
         end
     end
@@ -136,18 +163,24 @@ function KongConfig_Show()
 end
 
 function KongConfig_CreateChildCoverButtons(Frame)
-    for i,Child in pairs({Frame:GetChildren()}) do
-		if not Child:IsForbidden() and not Child:IsAnchoringRestricted() and not Child:IsObjectType("GameTooltip") then
-			if Child:IsShown() and Child ~= KongConfig.frame then
-				KongConfig_CreateCoverButton(Child)
-			end
-		end
+    for i,Child in pairs(Kong_GetFrameChildren(Frame)) do
+        if Child ~= KongConfig.frame and not Child:IsObjectType("GameTooltip") then
+            KongConfig_CreateCoverButton(Child)
+        end
     end
 end
 
 function KongConfig_CreateCoverButton(Frame)
 
-    local configName = "KongConfig_"..(Frame:GetName() or tostring(Frame))
+    local width, height = GetPickerGeometry(Frame)
+    if not width then
+        local cover = KongConfig_Frames[Frame]
+        if cover then cover:Hide(); KongConfig_SelectedFrames[cover] = nil end
+        return
+    end
+    local name = Frame:GetName()
+    if not IsPublic(name) or type(name) ~= "string" then name = tostring(KongConfig_NumFrames) end
+    local configName = "KongConfig_"..name
     if not KongConfig_Frames[Frame] then
         local CoverButton
 		
@@ -192,17 +225,20 @@ function KongConfig_CreateCoverButton(Frame)
     
     -- Expand config frame if too small
     local xoff, yoff = 0, 0
-    if Frame:GetWidth() < MIN_SIZE then
-        xoff = (MIN_SIZE-Frame:GetWidth())/2
+    if width < MIN_SIZE then
+        xoff = (MIN_SIZE-width)/2
     end
-    if Frame:GetHeight() < MIN_SIZE then
-        yoff = (MIN_SIZE-Frame:GetHeight())/2
+    if height < MIN_SIZE then
+        yoff = (MIN_SIZE-height)/2
     end
     KongConfig_Frames[Frame]:SetPoint("TOPLEFT", Frame, "TOPLEFT", -xoff, yoff)
     KongConfig_Frames[Frame]:SetPoint("BOTTOMRIGHT", Frame, "BOTTOMRIGHT", xoff, -yoff)
 end
 
 function KongConfig_OnClose()
+
+    KongConfig_PersistAsCoroutine = nil
+    if KongConfig_PersistAsDropDown then KongConfig_PersistAsDropDown:SetUserData(FRAME, nil) end
        
     CloseDropDownMenus() 
     
@@ -605,6 +641,7 @@ function KongConfig_CreateTriggerSliderGroup(text, triggers, field, tooltip)
 end
 
 function KongConfig_CoverButton_OnMouseWheel(self, dir)
+    if InCombatLockdown() then return end
 
     if (dir == 1) then
         KongConfig_SendToBack(self)
@@ -648,6 +685,7 @@ function KongConfig_SendToBack(self)
 end
 
 function KongConfig_CoverButton_OnClick(self, button)
+    if InCombatLockdown() then return end
 
     if button == "RightButton" then
         for frame in pairs(KongConfig_SelectedFrames) do
@@ -661,10 +699,11 @@ function KongConfig_CoverButton_OnClick(self, button)
         Dropdown:AddItem(BRING_TO_FRONT)
         Dropdown:AddItem(SEND_TO_BACK)
         
-        if self.uiFrame:GetParent() ~= UIParent then
+        local parent = Kong_GetFrameParent(self.uiFrame)
+        if parent and parent ~= UIParent then
             Dropdown:AddItem(CONFIGURE_PARENT)
         end
-        if self.uiFrame:GetNumChildren() > 0 then
+        if #Kong_GetFrameChildren(self.uiFrame) > 0 then
             Dropdown:AddItem(CONFIGURE_CHILDREN)
         end
         Dropdown:AddItem(CANCEL)
@@ -774,12 +813,7 @@ function KongConfig_OnUpdate(self, elapsed)
     end
     
     local showTip
-    local Focus
-	if ( GetMouseFocus ~= nil ) then
-		Focus = GetMouseFocus()
-	else
-		Focus = GetMouseFoci()[1]
-	end
+    local Focus = Kong_GetMouseFocus()
     local numUnderCursor = 0
     for child, Frame in pairs(KongConfig_Frames) do 
         showTip = (Frame == Focus)
@@ -812,18 +846,28 @@ function KongConfig_OnUpdate(self, elapsed)
 end
 
 local MAX_DEPTH = 4
-function KongConfig_RecursiveFrameSearch(Frame, tbl, depth, path, numParents)
-       
+local searchSteps = 0
+function KongConfig_RecursiveFrameSearch(Frame, tbl, depth, path, numParents, ancestors)
+    if not IsPublic(tbl) or (canaccesstable and not canaccesstable(tbl)) then return end
+    ancestors = ancestors or {}
+    if ancestors[tbl] then return end
+    ancestors[tbl] = true
     for name, value in pairs(tbl) do
-        if (type(name) == "string") or (type(name) == "number") or (type(name) == "boolean") then
-            if (type(value) == "table") and (value ~= tbl) then
+        searchSteps = searchSteps + 1
+        if searchSteps >= 200 and KongConfig_PersistAsCoroutine and coroutine.running() == KongConfig_PersistAsCoroutine then
+            searchSteps = 0
+            coroutine.yield()
+        end
+        if IsPublic(name) and IsPublic(value) and ((type(name) == "string") or (type(name) == "number") or (type(name) == "boolean")) then
+            if (type(value) == "table") and not rawequal(value, tbl) and (not canaccesstable or canaccesstable(value)) then
                 table.insert(path, name)
-                if Frame == value then
-                    if (string.sub(path[1], 1, 4) ~= "Kong") and (string.sub(path[1], 1, 6) ~= "AceGUI") then
+                if rawequal(Frame, value) then
+                    local root = tostring(path[1])
+                    if (string.sub(root, 1, 4) ~= "Kong") and (string.sub(root, 1, 6) ~= "AceGUI") then
                         local code = "";
                         for i = 1,#path do
                             if type(path[i]) == "string" then
-                                code = code .. "[\"" .. path[i] .. "\"]"
+                                code = code .. "[" .. string.format("%q", path[i]) .. "]"
                             else
                                 code = code .. "[" .. tostring(path[i]) .. "]"
                             end
@@ -832,20 +876,22 @@ function KongConfig_RecursiveFrameSearch(Frame, tbl, depth, path, numParents)
                         KongConfig_PersistAsDropDown:AddItem(code, Simplify(code))
                     end
                 elseif depth <= MAX_DEPTH then
-                    KongConfig_RecursiveFrameSearch(Frame, value, depth+1, path, numParents)
+                    KongConfig_RecursiveFrameSearch(Frame, value, depth+1, path, numParents, ancestors)
                 end
                 table.remove(path)
             end
         end
     end
+    ancestors[tbl] = nil
 end
 
 function KongConfig_PersistableFramePathSearch(frame, numParents)
+    searchSteps = 0
     KongConfig_RecursiveFrameSearch(frame, _G, 1, {}, numParents)
     
     KongConfig_UpdatePersistAsPullout(KongConfig_PersistAsDropDown.pullout);
     coroutine.yield()
-    for _, child in pairs({frame:GetChildren()}) do
+    for _, child in pairs(Kong_GetFrameChildren(frame)) do
        KongConfig_PersistableFramePathSearch(child, numParents+1)
     end
 end
@@ -1441,6 +1487,7 @@ function KongConfig_HideAtZeroAlpha_OnValueChanged(self)
 end
 
 function KongConfig_PersistAsDropDown_OnClick(self, button, down)
+    if InCombatLockdown() then return end
 
     KongConfig_PersistAsDropDown.pullout:SetWidth(KongConfig_PersistAsDropDown.frame:GetWidth() - 30);
     
@@ -1486,6 +1533,7 @@ function KongConfig_UpdateTooltip(self, event)
 end
 
 function KongConfig_OnDropdownValueChanged(Dropdown, _, value)
+    if InCombatLockdown() then return end
     
     local CoverButton = Dropdown.obj;
     if value == BRING_TO_FRONT then
@@ -1500,8 +1548,9 @@ function KongConfig_OnDropdownValueChanged(Dropdown, _, value)
             CoverButton:Hide();
         end
     elseif value == CONFIGURE_PARENT then
-        local Parent = CoverButton.uiFrame:GetParent()
-        for _, Child in pairs({Parent:GetChildren()}) do
+        local Parent = Kong_GetFrameParent(CoverButton.uiFrame)
+        if not Parent then return end
+        for _, Child in pairs(Kong_GetFrameChildren(Parent)) do
             if KongConfig_Frames[Child] and not Kong_Frames[Child] then
                 KongConfig_Frames[Child]:Hide()
             end

@@ -122,6 +122,37 @@ local TriggerDefaults = {
 	alphaOut = 0,
 }
 
+function Kong_CanAccessFrame(region)
+	return R.Fader.canAccess(FADER, region)
+end
+
+function Kong_GetFrameParent(region)
+	if not Kong_CanAccessFrame(region) or type(region.GetParent) ~= "function" then return nil end
+	local parent = region:GetParent()
+	if Kong_CanAccessFrame(parent) then return parent end
+end
+
+function Kong_GetFrameChildren(region)
+	local children = {}
+	if Kong_CanAccessFrame(region) and type(region.GetChildren) == "function" then
+		for _, child in pairs({region:GetChildren()}) do
+			if Kong_CanAccessFrame(child) then children[#children + 1] = child end
+		end
+	end
+	return children
+end
+
+function Kong_GetMouseFocus()
+	local focus
+	if GetMouseFoci then
+		local foci = GetMouseFoci()
+		if not (issecretvalue and issecretvalue(foci)) and type(foci) == "table" then focus = foci[1] end
+	elseif GetMouseFocus then
+		focus = GetMouseFocus()
+	end
+	if Kong_CanAccessFrame(focus) then return focus end
+end
+
 function Kong_Error(str, ...)
 	print("|cFFFF2222Kong Error:|r "..string.format(str, ...))
 end
@@ -253,7 +284,10 @@ end
 
 function A.FadeOut(region, condition)
 	condition.refs = condition.refs - 1
-	assert(condition.refs >= 0, "ref < 0 for region: " .. tostring(region:GetName() or region))
+	if condition.refs < 0 then
+		local setting = Kong_Frames[region]
+		error("ref < 0 for region: " .. tostring(setting and setting.index or "<unnamed>"))
+	end
 	if ( condition.refs == 0 ) then
 		local speed = GetFadeSpeed(condition, condition.secondsOut)
 		local displacement = 0
@@ -309,24 +343,24 @@ function Kong_CalculateFadeOut(region)
 end
 
 function Kong_FindGlobalIndex(region)
+	if not Kong_CanAccessFrame(region) then return nil end
 	local name = region:GetName()
-	
-	if ( name ) then
-		return '["' .. name .. '"]'
+	if not (issecretvalue and issecretvalue(name)) and type(name) == "string" then
+		return '[' .. string.format("%q", name) .. ']'
 	end
 	
 	for k, v in pairs(_G) do
-		if ( v == region ) then
+		if not (issecretvalue and (issecretvalue(k) or issecretvalue(v))) and rawequal(v, region) then
 			local keyType = type(k)
 			if ( keyType == "string" ) then
-				return '["' .. k .. '"]'
+				return '[' .. string.format("%q", k) .. ']'
 			elseif ( keyType == "number" or keyType == "boolean" ) then
 				return "[" .. tostring(k) .. "]"
 			end
 		end
 	end
 	
-	for i, child in pairs{region:GetChildren()} do
+	for i, child in pairs(Kong_GetFrameChildren(region)) do
 		name = Kong_FindGlobalIndex(child)
 		if ( name ) then
 			return name .. ":GetParent()"
@@ -349,6 +383,7 @@ function A.CreateTrigger(Frame)
 end
 
 function Kong_RegisterFrame(region)
+	if not Kong_CanAccessFrame(region) then return end
 	Kong_Frames[region] = {}
 	local index = Kong_FindGlobalIndex(region)
 	if ( index ~= nil ) then
@@ -405,6 +440,7 @@ function Kong_RemoveTrigger(region, trigger)
 	end
 	trigger.Condition:RemoveListener(A.OnConditionStateChange)
 	LibUSC:Deflate(trigger.Condition)
+	if Kong_Frames[region].Mouseover == trigger then Kong_Frames[region].Mouseover = nil end
 	for i, v in ipairs(Kong_Frames[region]) do
 		if ( v == trigger ) then
 			table.remove(Kong_Frames[region], i)
@@ -508,9 +544,8 @@ function A.LoadFrames()
 
 		if (
 				isFound
-				and region
-				and type(region.IsObjectType) == "function"
 				and R.Fader.canAccess(FADER, region)
+				and type(region.IsObjectType) == "function"
 				and region:IsObjectType("Region") -- make sure it is a region; ticket #5
 				and not Kong_Frames[region]
 		) then
@@ -548,8 +583,8 @@ function A.LoadFrames()
 			
 			for name, group in pairs(Kong_Settings.Groups) do
 				if ( group[setting.index] ) then
-					for i = 1, group[setting.index] do
-						A.FadeIn(region, setting.Mouseover)
+					if setting.Mouseover then
+						for i = 1, group[setting.index] do A.FadeIn(region, setting.Mouseover) end
 					end
 					group[setting.index] = region
 				end
@@ -579,10 +614,6 @@ function Kong_Unload()
 		end
 	end
 	
-	if ( MinimapParent ) then
-		MinimapParent.KongAlphaAnimation:GetScript("OnFinished")()
-	end
-	
 	for name, group in pairs(Kong_Settings.Groups) do
 		for index in pairs(group) do
 			group[index] = 0
@@ -596,33 +627,36 @@ function Kong_Unload()
 end
 
 function A.FindFirstTrackedRegion(region)
-	while ( region ~= nil and Kong_Frames[region] == nil ) do
-		region = not region:IsForbidden() and region:GetParent() or nil
+	while Kong_CanAccessFrame(region) do
+		if Kong_Frames[region] ~= nil then return region end
+		region = Kong_GetFrameParent(region)
 	end
-	return region
 end
 
 function A.ForEachTrackedRegion(region, func, ...)
+	if issecretvalue and issecretvalue(region) then return end
 	while ( region ~= nil ) do
 		if ( Kong_Frames[region] ~= nil ) then func(region, ...) end
-		region = not region:IsForbidden() and region:GetParent() or nil
+		region = Kong_GetFrameParent(region)
 	end
 end
 
 function A.MouseoverRegionFader(region, func, additive)
 	local settings = Kong_Frames[region]
+	if not settings then return end
 	for name, group in pairs(Kong_Settings.Groups) do
 		if ( group[settings.index] ~= nil ) then
 			for index, groupRegion in pairs(group) do
 				if ( type(groupRegion) == "table" ) then -- TODO: remove value-type ambiguity
-					func(groupRegion, Kong_Frames[groupRegion].Mouseover)
-				else
+					local groupSetting = Kong_Frames[groupRegion]
+					if groupSetting and groupSetting.Mouseover then func(groupRegion, groupSetting.Mouseover) end
+				elseif type(groupRegion) == "number" then
 					group[index] = groupRegion + additive
 				end
 			end
 		end
 	end
-	func(region, settings.Mouseover)
+	if settings.Mouseover then func(region, settings.Mouseover) end
 end
 
 local FRAME_FIND_PERIOD = 1.0
@@ -635,12 +669,7 @@ function A.OnUpdate(self, elapsed)
 		A.LoadFrames()
 	end
 
-	local mouseFocus
-	if ( GetMouseFocus ~= nil ) then
-		mouseFocus = GetMouseFocus()
-	else
-		mouseFocus = GetMouseFoci()[1]
-	end
+	local mouseFocus = Kong_GetMouseFocus()
 	if ( mouseFocus ~= lastMouseFocus ) then
 		local mouseStart = mouseFocus ~= nil and A.FindFirstTrackedRegion(mouseFocus) or nil
 		if ( mouseStart ~= lastMouseStart ) then
@@ -673,23 +702,6 @@ function A.OnEvent(self, event, arg1, ...)
 	elseif event == "PLAYER_REGEN_ENABLED" or event == "PLAYER_ENTERING_WORLD" then
 		A.ApplyPendingVisibility()
 	end
-end
-
--- Fix for TukUI PetBattleHider -- TODO remove after v1.6
-if TukuiPetBattleHider then
-	for _,TukChild in pairs({TukuiPetBattleHider:GetChildren()}) do
-		TukChild:SetParent(UIParent)
-		local unit = TukChild:GetAttribute("unit")
-		if unit then
-			RegisterUnitWatch(TukChild, true)
-			RegisterStateDriver(TukChild, "visibility", "[@"..unit..",exists,nopetbattle] show; hide")
-		else
-			RegisterStateDriver(TukChild, "visibility", "[nopetbattle] show; hide")
-		end
-	end
-	UnregisterStateDriver(TukuiPetBattleHider, "visibility")
-	TukuiPetBattleHider:Hide()
-	TukuiPetBattleHider = UIParent
 end
 
 -- The event receiver frame

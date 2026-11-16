@@ -2,7 +2,7 @@
 -- ConditionEditor
 -- An interface for configuring LibUSC conditions
 --------------------------------------------------------------------------------
-local Type, Version = "ConditionEditor", 3
+local Type, Version = "ConditionEditor", 4
 local AceGUI = LibStub and LibStub("AceGUI-3.0", true)
 if not AceGUI or (AceGUI:GetWidgetVersion(Type) or 0) >= Version then return end
 
@@ -140,11 +140,7 @@ local function OnClick(Editor, key, text, button)
     self.Dropdown:Sort()
     self.Dropdown:AddItem(CANCEL)
     
-	if ( GetMouseFocus ~= nil ) then
-        ToggleDropDownMenu(nil, nil, self.Dropdown.dropdown, GetMouseFocus(), 0, 0, self.Dropdown.menuList)
-	else
-        ToggleDropDownMenu(nil, nil, self.Dropdown.dropdown, GetMouseFoci()[1], 0, 0, self.Dropdown.menuList)
-	end
+	ToggleDropDownMenu(nil, nil, self.Dropdown.dropdown, Kong_GetMouseFocus() or UIParent, 0, 0, self.Dropdown.menuList)
         
     self.selectedKey = key
 end
@@ -162,6 +158,11 @@ local function ParamValueToString(Param)
     end
 end
 
+local function IsParameterValid(Param)
+    if not Param:IsValueAvailable() then return true end
+    return Param:IsValid()
+end
+
 local function OnEnter(Editor, key, text)
     local self = Editor.obj
     self.hoveredKey = key
@@ -170,7 +171,7 @@ local function OnEnter(Editor, key, text)
     local Param = Func.Parameters[paramIndex]
     
     GameTooltip:SetOwner(self.frame, "ANCHOR_TOP")
-    local valid, msg = Param:IsValid()
+    local valid, msg = IsParameterValid(Param)
     if valid and IsModifierKeyDown() then
         GameTooltip:AddDoubleLine(DEFAULT_COLOR..Param.type..":|r "..Param.name,
             ParamValueToString(Param), 1,1,1)
@@ -257,7 +258,7 @@ local function GenerateHypertext(self, key, Param)
         color = FOCUS_COLOR
     elseif self.coloredKey and (string.find(key, self.coloredKey) == 1) then
         color = FOCUS_PARAM_COLOR
-    elseif not Param:IsValid() then
+    elseif not IsParameterValid(Param) then
         color = INVALID_COLOR
     elseif not self.Editor:GetHyperlinksEnabled() then
         color = DISABLED_COLOR

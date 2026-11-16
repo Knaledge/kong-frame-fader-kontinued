@@ -131,6 +131,10 @@ function A.CommandHandler(args)
 	local command = args[1]
 
 	if ( command == nil or command == "" ) then
+		if InCombatLockdown() then
+			Kong_Warning("Configuration cannot be opened during combat")
+			return
+		end
 		if ( C_AddOns.LoadAddOn("KongConfig") ) then
 			KongConfig_Show()
 		else

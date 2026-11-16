@@ -1,4 +1,4 @@
-local LibUSC = LibStub and LibStub:NewLibrary("LibUserSpecifiedConditions", 7)
+local LibUSC = LibStub and LibStub:NewLibrary("LibUserSpecifiedConditions", 8)
 if not LibUSC then return end -- no upgrade necessary
 
 local pairs = _G.pairs;
@@ -342,12 +342,12 @@ function LibUSC.BaseParameter:GetMenuOverrideString()
 end
 
 function LibUSC.BaseParameter:OnEvent(event)
-    self:SetValue(self:Call())
+    self:SetValue()
 end
 
 LibUSC.BaseParameter.updatePeriod = .1   
 function LibUSC.BaseParameter:OnUpdate(elapsed)
-    self:SetValue(self:Call())
+    self:SetValue()
 end
 
 function LibUSC.BaseParameter:Clone()
