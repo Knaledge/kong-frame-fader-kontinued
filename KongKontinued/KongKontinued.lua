@@ -87,6 +87,7 @@ local VERSION = "0.1.0-dev"
 
 KongKontinued_Frames = {}
 KongKontinued_Profiles = {}
+KongKontinued_ProfileRenames = {}
 
 local lastMouseFocus = nil
 local lastMouseStart = nil
@@ -245,31 +246,117 @@ LibUSC:RegisterParameter(MouseoverTypeName, {
 	value = false,
 })
 
--- Preview and commit both validate fresh data; callers cannot submit a modified plan.
-function KongKontinued_PreviewLegacyImport(text)
-	return A.LegacyImport.Prepare(text, KongKontinued_Profiles, LibUSC.Parameters)
+function A.ResolveProfileName(name)
+	return A.LegacyImport.ResolveProfileName(name, KongKontinued_Profiles, KongKontinued_ProfileRenames)
 end
 
-function KongKontinued_ImportLegacy(text, activate)
+local function GetProfileRenames()
+	local renames = KongKontinued_ProfileRenames
+	if type(renames) ~= "table" then return nil, "Profile rename records are invalid" end
+	for oldName, name in pairs(renames) do
+		if type(oldName) ~= "string" or oldName == "" or type(name) ~= "string" or name == "" then
+			return nil, "Profile rename records contain an invalid name"
+		end
+		local resolved, err = A.ResolveProfileName(oldName)
+		if not resolved then return nil, err end
+	end
+	return renames
+end
+
+local function ImportSignature(plan)
+	local parts = {plan.mode, plan.target or "", plan.source or "", plan.selection or "",
+		tostring(plan.enabled), tostring(plan.frames), tostring(plan.conditions)}
+	for _, entry in ipairs(plan.profiles) do
+		parts[#parts + 1], parts[#parts + 2] = entry.source, entry.name
+	end
+	return table.concat(parts, "\n")
+end
+
+local importPreviews = setmetatable({}, {__mode = "k"})
+
+local function PrepareImport(text, options)
+	local renames, err = GetProfileRenames()
+	if not renames then return nil, err end
+	return A.LegacyImport.Prepare(text, KongKontinued_Profiles, LibUSC.Parameters,
+		options, renames, KongKontinued_Settings and KongKontinued_Settings.profile)
+end
+
+-- Tokens bind the preview to its input, action, destination and profile state.
+-- Commit always reparses; returned plan tables are never trusted as input.
+function KongKontinued_PreviewLegacyImport(text, options)
+	local plan, err = PrepareImport(text, options)
+	if not plan then return nil, err end
+	if KongKontinued_Initialized and A.CurrentProfileTarget then
+		local record = {text = text, signature = ImportSignature(plan), target = A.CurrentProfileTarget(), renames = {}, destinations = {}}
+		for oldName, name in pairs(KongKontinued_ProfileRenames) do record.renames[oldName] = name end
+		for _, entry in ipairs(plan.profiles) do
+			record.destinations[#record.destinations + 1] = {name = entry.name, profile = KongKontinued_Profiles[entry.name]}
+		end
+		plan.token = {}
+		importPreviews[plan.token] = record
+	elseif plan.replaces then
+		return nil, "Current profile is not initialized"
+	end
+	return plan
+end
+
+function KongKontinued_ImportLegacy(text, activate, options, token)
 	if InCombatLockdown() then return nil, "Legacy import is unavailable during combat" end
 	if #GetActiveLegacyAddOns() > 0 then return nil, "Disable legacy Kong and reload before importing; use /kongkontinued import" end
 	if KongKontinuedConfig and KongKontinuedConfig:IsShown() then
 		return nil, "Close the configuration screen before importing"
 	end
-	local plan, err = KongKontinued_PreviewLegacyImport(text)
+	if activate ~= nil and type(activate) ~= "boolean" then return nil, "Invalid import activation choice" end
+	local plan, err = PrepareImport(text, options)
 	if not plan then return nil, err end
 	if activate and not plan.selection then return nil, "No legacy character profile was selected" end
+	if token then
+		local record = importPreviews[token]
+		if not record or record.text ~= text or record.signature ~= ImportSignature(plan)
+			or not A.IsCurrentProfileTarget(record.target) then
+			return nil, "Import preview is stale; preview again before importing"
+		end
+		for oldName, name in pairs(record.renames) do
+			if KongKontinued_ProfileRenames[oldName] ~= name then return nil, "Profile renames changed; preview again" end
+		end
+		for oldName, name in pairs(KongKontinued_ProfileRenames) do
+			if record.renames[oldName] ~= name then return nil, "Profile renames changed; preview again" end
+		end
+		for _, destination in ipairs(record.destinations) do
+			if KongKontinued_Profiles[destination.name] ~= destination.profile then return nil, "Destination changed; preview again" end
+		end
+	elseif plan.replaces then
+		return nil, "Preview the replacement import before confirming it"
+	end
+	local nextRenames
+	if plan.renameFrom then
+		nextRenames = {}
+		for oldName, name in pairs(KongKontinued_ProfileRenames) do
+			local resolved = A.ResolveProfileName(oldName)
+			if oldName ~= plan.selection then
+				nextRenames[oldName] = resolved == plan.renameFrom and plan.selection or name
+			end
+		end
+		nextRenames[plan.renameFrom] = plan.selection
+	end
+	if token then importPreviews[token] = nil end
+	if plan.replaces or activate then KongKontinued_Unload()
+	elseif KongKontinued_InvalidateProfileDialogs then KongKontinued_InvalidateProfileDialogs() end
 	for _, entry in ipairs(plan.profiles) do
 		entry.data.version = VERSION
 		for _, setting in ipairs(entry.data.Frames) do setting.version = VERSION end
 		KongKontinued_Profiles[entry.name] = entry.data
 	end
-	if activate then
-		KongKontinued_Unload()
+	if nextRenames then
+		KongKontinued_Profiles[plan.renameFrom] = nil
+		KongKontinued_ProfileRenames = nextRenames
+	end
+	if plan.replaces or activate then
 		KongKontinued_Settings.profile = plan.selection
-		KongKontinued_Settings.enabled = plan.enabled
+		if not plan.replaces then KongKontinued_Settings.enabled = plan.enabled end
 		A.LoadSettings()
 	end
+	if A.RefreshOptions then A.RefreshOptions() end
 	return plan
 end
 
@@ -596,7 +683,6 @@ end
 
 function A.LoadSettings()
 	if ( KongKontinued_Initialized ) then return end
-	KongKontinued_Initialized = true
 	
 	if ( not KongKontinued_Settings or not KongKontinued_Settings.profile ) then
 		local playerName = string.lower( UnitName("player") )
@@ -609,7 +695,9 @@ function A.LoadSettings()
 		}
 	end
 
-	KongKontinued_Settings.profile = string.gsub(KongKontinued_Settings.profile, " ", "_")
+	local name, err = A.ResolveProfileName(string.gsub(KongKontinued_Settings.profile, " ", "_"))
+	if not name then KongKontinued_Error("%s", err); return end
+	KongKontinued_Settings.profile = name
 	
 	if ( not KongKontinued_Profiles[KongKontinued_Settings.profile] ) then
 		KongKontinued_Profiles[KongKontinued_Settings.profile] = {
@@ -621,6 +709,7 @@ function A.LoadSettings()
 	setmetatable(KongKontinued_Settings, {__index = KongKontinued_Profiles[KongKontinued_Settings.profile]})
 
 	KongKontinued_Profiles[KongKontinued_Settings.profile].version = VERSION
+	KongKontinued_Initialized = true
 
 	A.LoadFrames()
 
@@ -630,6 +719,7 @@ function A.LoadSettings()
 end
 
 function A.LoadFrames()
+	if not KongKontinued_Initialized then return end
 	for i = #KongKontinued_Settings.Frames, 1, -1 do
 		local setting = KongKontinued_Settings.Frames[i]
 		
@@ -712,7 +802,7 @@ function KongKontinued_Unload()
 		end
 	end
 	
-	for name, group in pairs(KongKontinued_Settings.Groups) do
+	for name, group in pairs(KongKontinued_Settings.Groups or {}) do
 		for index in pairs(group) do
 			group[index] = 0
 		end

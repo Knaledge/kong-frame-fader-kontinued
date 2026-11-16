@@ -71,13 +71,14 @@ Config; native Options works without that companion. Configuration
 changes through Options are unavailable during combat. The configuration
 key binding now opens Options and retains its existing action ID.
 
-KI-6 R01 adds the Options foundation. Import destination/name controls and
-preset checkboxes are planned for subsequent revisions. The new Options
-workflow still requires in-game validation.
+KI-6 adds native Options and profile-aware legacy import. Preset checkboxes
+remain planned. The new Options and import workflows still require
+in-game validation.
 
-Account-wide profiles use `KongKontinued_Profiles`; character selection and
-enabled state use `KongKontinued_Settings`. Both are declared only by the
-new main addon. Legacy `Kong_Profiles` and `Kong_Settings` are neither loaded
+Account-wide profiles use `KongKontinued_Profiles`, with old-name lookup
+records in `KongKontinued_ProfileRenames`; character selection and enabled
+state use `KongKontinued_Settings`. These are declared only by the new main
+addon. Legacy `Kong_Profiles` and `Kong_Settings` are neither loaded
 nor written by Kontinued. Key bindings appear under Kong Frame Fader
 Kontinued. Legacy Kong assignments use different action IDs and must be
 reassigned there; Kontinued does not automatically rewrite saved bindings.
@@ -106,16 +107,52 @@ addon IDs must be disabled manually.
    `WTF/Account/<account>/<realm>/<character>/SavedVariables/Kong.lua`
    containing `Kong_Settings = ...` to retain its profile selection and
    enabled state
-5. Click **Preview** and review the profile names and counts
-6. Leave the selection checkbox off to copy profiles only, or check it to
-   switch this character to the displayed imported profile
-7. Click **Import Profiles**, then `/reload` to save the new addon data
+5. Choose an **Import action**, then click **Preview** to populate the
+   incoming-profile selector and review the names and counts
+6. For a single-profile action, choose the incoming profile and preview
+   again; for rename, also enter the new destination name
+7. Click **Import Profiles** or **Replace Profile...**, confirm any
+   destructive replacement, then `/reload` to save the new addon data
 
-Existing Kontinued profiles are preserved. Name collisions gain an
-`_imported`, `_imported_2`, etc. suffix. Profile names are lowercased and
-whitespace becomes underscores to match profile commands. Without a
-matching character selection, a single imported profile can be selected;
-multiple profiles can be selected later with `/kong profile load <name>`.
+Import actions:
+
+- **Copy all profiles (preserve existing)** keeps the original safe bulk workflow
+- **Import into current profile** replaces its complete configuration under its existing name
+- **Rename current profile and import** replaces its configuration under a chosen new name
+- **Import selected as separate profile** copies one incoming profile without overwriting existing data
+
+Preview displays the original incoming name and the actual destination
+name. Copy-all and separate-profile imports preserve existing profiles;
+collisions gain a visible `_imported`, `_imported_2`, etc. suffix. Names
+are trimmed, lowercased and use underscores for whitespace. Generated
+collision names stay within the 128-byte limit.
+
+For safe copy actions, leave the selection checkbox off to copy only, or
+check it to switch this character to the displayed imported selection and
+enabled state. Bulk import without a matching character selection can
+automatically offer a single imported profile; otherwise choose later in
+Options. Current-profile and rename imports always retain this character's
+enabled state and require confirmation naming the incoming and destination
+profiles. Other profiles are untouched.
+
+Renaming preserves other characters' selections through account-wide
+old-name lookup records. When another character loads, it follows the
+rename and retains its own enabled state. Old names are reserved against
+unrelated profile creation/import, and repeated renames keep the lookup
+current. Renaming back to an old name belonging to that same profile is
+allowed. The old names are accepted by profile load/delete commands; they
+are not duplicate entries in the Options profile list.
+
+Changes to the paste, action, source, destination or relevant profile state
+require another preview. Closing the importer or entering combat clears
+the paste and dismisses replacement confirmation. All input profiles are
+validated before any writes, even when selecting only one to import.
+
+Rename records use a new SavedVariables declaration. Verify persistence
+across reload/relog and follow-up character loads before relying on a
+shared-profile rename. To roll back to an older version without rename
+support after testing, rename disposable test profiles back and select
+their canonical names on the test characters before reverting the code.
 
 The importer accepts literal Lua SavedVariables data up to 4 MiB, validates
 all profiles before copying, and rejects executable expressions, unknown

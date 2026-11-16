@@ -26,7 +26,6 @@ local HELP_IMPORT = "|cFF33FF99import|r: previews and imports legacy Kong SavedV
 local HELP_ADVANCED = "|cFF33FF99advanced|r: opens Advanced Config"
 local PROFILE_LOADED = "Profile %q loaded."
 local NOW_USING_PROFILE = "Now using profile %q."
-local PROFILE_ALREADY_EXISTS = "Profile %q already exists."
 local INVALID_COMMAND = " command unknown (Type |cFF33FF99/kong help|r for help)."
 local UNKNOWN_OPTION = "Unknown option: %q (Type |cFF33FF99/kong %s|r for help)."
 local PROFILE_NAME_REQUIRED = "Profile name required."
@@ -39,6 +38,7 @@ function KongKontinued_InvalidateProfileDialogs()
 	StaticPopup_Hide("KONGKONTINUED_ADD_PROFILE")
 	StaticPopup_Hide("KONGKONTINUED_COPY_PROFILE")
 	StaticPopup_Hide("KONGKONTINUED_RESET")
+	StaticPopup_Hide("KONGKONTINUED_IMPORT_REPLACE")
 end
 
 function A.CanModifyProfiles()
@@ -54,12 +54,11 @@ function A.CanModifyProfiles()
 	return KongKontinued_ConfirmLegacyDisabled()
 end
 
-function A.NormalizeProfileName(name)
-	if type(name) ~= "string" or not name:find("%S") then return nil, "Profile name cannot be empty" end
-	if name:find("%c") then return nil, "Profile name cannot contain control characters" end
-	name = name:match("^%s*(.-)%s*$"):lower():gsub("%s+", "_")
-	if #name > 128 then return nil, "Profile name must be at most 128 bytes" end
-	return name
+A.NormalizeProfileName = A.LegacyImport.NormalizeProfileName
+
+function A.IsProfileNameReserved(name)
+	return KongKontinued_Profiles[name] ~= nil
+		or (type(KongKontinued_ProfileRenames) == "table" and KongKontinued_ProfileRenames[name] ~= nil)
 end
 
 function A.CurrentProfileTarget()
@@ -77,7 +76,10 @@ function A.CreateProfile(name)
 	if not A.CanModifyProfiles() then return end
 	local normalized, err = A.NormalizeProfileName(name)
 	if not normalized then KongKontinued_Error("%s", err); return end
-	if KongKontinued_Profiles[normalized] then KongKontinued_Error(PROFILE_ALREADY_EXISTS, normalized); return end
+	if A.IsProfileNameReserved(normalized) then
+		KongKontinued_Error("Profile name %q already exists or is reserved by a rename", normalized)
+		return
+	end
 	KongKontinued_Unload()
 	KongKontinued_Settings.profile = normalized
 	A.LoadSettings()
@@ -89,7 +91,7 @@ end
 local function UpdateAddProfileInput(editBox)
 	local name = A.NormalizeProfileName(editBox:GetText())
 	local button = editBox:GetParent():GetButton1()
-	if name and not KongKontinued_Profiles[name] then button:Enable()
+	if name and not A.IsProfileNameReserved(name) then button:Enable()
 	else button:Disable() end
 end
 
@@ -200,6 +202,9 @@ function A.ProfileCommandHandler(command, name)
 	elseif ( command == "delete" ) then
 		if not A.CanModifyProfiles() then return end
 		if ( name == nil ) then KongKontinued_Error(PROFILE_NAME_REQUIRED) return end
+		local resolved, err = A.ResolveProfileName(name)
+		if not resolved then KongKontinued_Error("%s", err); return end
+		name = resolved
 		if ( name == KongKontinued_Settings.profile ) then KongKontinued_Error(CANNOT_DELETE_CURRENT_PROFILE) return end
 		if ( KongKontinued_Profiles[name] == nil ) then KongKontinued_Error(NO_SUCH_PROFILE, name) return end
 		
@@ -221,6 +226,9 @@ function A.ProfileCommandHandler(command, name)
 	elseif ( command == "load" ) then
 		if not A.CanModifyProfiles() then return end
 		if ( name == nil ) then KongKontinued_Error(PROFILE_NAME_REQUIRED) return end
+		local resolved, err = A.ResolveProfileName(name)
+		if not resolved then KongKontinued_Error("%s", err); return end
+		name = resolved
 		if ( KongKontinued_Profiles[name] == nil ) then KongKontinued_Error(NO_SUCH_PROFILE, name) return end
 		if ( name == KongKontinued_Settings.profile ) then KongKontinued_Error(PROFILE_ALREADY_LOADED, name) return end
 		

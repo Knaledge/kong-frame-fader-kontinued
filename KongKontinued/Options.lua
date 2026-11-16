@@ -150,8 +150,8 @@ local function RegisterOptions()
         return false
     end)
 
-    local import = CreateSettingsButtonInitializer("Legacy profiles", "Import Legacy Profiles",
-        A.ShowLegacyImport, "Preview and import legacy Kong SavedVariables", true)
+    local import = CreateSettingsButtonInitializer("Profile import", "Import Legacy Profiles",
+        A.ShowLegacyImport, "Preview incoming and destination profile names before copying or replacing legacy settings", true)
     ConfigureInitializer(import)
     layout:AddInitializer(import)
 
