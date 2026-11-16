@@ -9,12 +9,6 @@
         KongKontinued_ToggleCommandHandler();
     </Binding>
     <Binding name="KONGKONTINUED_CONFIG" description="Open Config GUI">
-        if InCombatLockdown() then
-            KongKontinued_Warning("Configuration cannot be opened during combat")
-        elseif C_AddOns.LoadAddOn('KongKontinuedConfig') then
-            KongKontinuedConfig_Show()
-        else
-            KongKontinued_Error("Kong Kontinued Config is either disabled or not installed.");
-        end
+        SlashCmdList["KONGKONTINUED"]("");
     </Binding>
 </Bindings>

@@ -111,6 +111,7 @@ function KongKontinuedConfig_Show()
         KongKontinued_Warning("Configuration cannot be opened during combat")
         return
     end
+    if not KongKontinued_ConfirmLegacyDisabled() then return end
     if (not KongKontinuedConfig) or (not KongKontinuedConfig:IsVisible()) then
     
         -- Display registered frames
@@ -648,7 +649,7 @@ function KongKontinuedConfig_CoverButton_OnMouseWheel(self, dir)
     else
         local lowestFrame
         for child, frame in pairs(KongKontinuedConfig_Frames) do
-            if MouseIsOver(frame) and frame:IsShown() then
+            if frame:IsMouseOver() and frame:IsShown() then
                 if (not lowestFrame) or frame:GetFrameLevel() < lowestFrame:GetFrameLevel() then
                     lowestFrame = frame
                 end
@@ -739,7 +740,7 @@ function KongKontinuedConfig_CoverButton_OnClick(self, button)
         KongKontinuedConfig:SetStatusText("Select a widget to configure.")
     else
         for child, frame in pairs(KongKontinuedConfig_Frames) do
-            if MouseIsOver(frame) and frame ~= self then
+            if frame:IsMouseOver() and frame ~= self then
                 KongKontinuedConfig:SetStatusText("Use mouse wheel to uncover frames.")
                 return
             end
@@ -817,7 +818,7 @@ function KongKontinuedConfig_OnUpdate(self, elapsed)
     local numUnderCursor = 0
     for child, Frame in pairs(KongKontinuedConfig_Frames) do 
         showTip = (Frame == Focus)
-        if MouseIsOver(Frame) then
+        if Frame:IsMouseOver() then
             numUnderCursor = numUnderCursor + 1
         end
     end

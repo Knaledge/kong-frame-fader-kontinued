@@ -136,6 +136,7 @@ function A.CommandHandler(args)
 			KongKontinued_Warning("Configuration cannot be opened during combat")
 			return
 		end
+		if not KongKontinued_ConfirmLegacyDisabled() then return end
 		if ( C_AddOns.LoadAddOn("KongKontinuedConfig") ) then
 			KongKontinuedConfig_Show()
 		else

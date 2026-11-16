@@ -138,7 +138,7 @@ function KongKontinued_ConfirmLegacyDisabled()
 	local active = GetActiveLegacyAddOns()
 	if #active == 0 then return true end
 	if InCombatLockdown() then
-		KongKontinued_Warning("Disable legacy Kong and reload before importing; this action is unavailable during combat")
+		KongKontinued_Warning("Disable legacy Kong and reload before continuing; this action is unavailable during combat")
 		return false
 	end
 	StaticPopup_Show("KONGKONTINUED_DISABLE_LEGACY", table.concat(active, ", "))
@@ -146,7 +146,7 @@ function KongKontinued_ConfirmLegacyDisabled()
 end
 
 StaticPopupDialogs["KONGKONTINUED_DISABLE_LEGACY"] = {
-	text = "Legacy Kong detected: %s\n\nDisable Kong and KongConfig for all characters and reload before importing? Legacy settings files will be preserved. Any pasted import text will need to be pasted again after reloading.",
+	text = "Legacy Kong detected: %s\n\nDisable Kong and KongConfig for all characters and reload before continuing? Legacy settings files will be preserved. Any pasted import text will need to be pasted again after reloading.",
 	button1 = "Disable and Reload",
 	button2 = CANCEL,
 	OnAccept = KongKontinued_DisableLegacyAddOns,
