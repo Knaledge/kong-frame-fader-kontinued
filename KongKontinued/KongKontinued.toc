@@ -4,7 +4,7 @@
 ## Version: 0.1.0-dev
 ## Notes: Fades UI regions in and out based on user-specified conditions.
 ## SavedVariablesPerCharacter: KongKontinued_Settings
-## SavedVariables: KongKontinued_Profiles
+## SavedVariables: KongKontinued_Profiles, KongKontinued_ProfileRenames
 ## OptionalDeps: Tukui, SexyMap
 
 libs\LibStub\LibStub.lua
@@ -17,3 +17,4 @@ classes\ObjectPool.lua
 LegacyImport.lua
 KongKontinued.lua
 CommandLine.lua
+Options.lua

@@ -8,7 +8,7 @@
     <Binding name="KONGKONTINUED_TOGGLE" description="Toggle UI Fading On/Off">
         KongKontinued_ToggleCommandHandler();
     </Binding>
-    <Binding name="KONGKONTINUED_CONFIG" description="Open Config GUI">
+    <Binding name="KONGKONTINUED_CONFIG" description="Open Options">
         SlashCmdList["KONGKONTINUED"]("");
     </Binding>
 </Bindings>

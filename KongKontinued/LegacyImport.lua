@@ -346,9 +346,51 @@ local function profile(source, definitions, report)
     return out
 end
 
-function Import.Prepare(text, existing, definitions)
+-- Reuse the data-only validation/copy path for native profile operations.
+function Import.CopyProfile(source, definitions)
+    local ok, result = pcall(profile, source, definitions, {frames = 0, conditions = 0})
+    if ok then return result end
+    return nil, tostring(result)
+end
+
+function Import.NormalizeProfileName(name)
+    if type(name) ~= "string" or not name:find("%S") then return nil, "Profile name cannot be empty" end
+    if name:find("%c") then return nil, "Profile name cannot contain control characters" end
+    name = name:match("^%s*(.-)%s*$"):lower():gsub("%s+", "_")
+    if #name > 128 then return nil, "Profile name must be at most 128 bytes" end
+    return name
+end
+
+local function uniqueName(base, reserved)
+    local name, suffix = base, 1
+    while reserved[name] do
+        local ending = "_imported" .. (suffix == 1 and "" or "_" .. suffix)
+        name = base:sub(1, 128 - #ending) .. ending
+        suffix = suffix + 1
+    end
+    return name
+end
+
+function Import.ResolveProfileName(name, existing, renames)
+    if type(name) ~= "string" or name == "" then return nil, "Invalid profile name" end
+    if type(renames) ~= "table" then return nil, "Profile rename records are invalid; no profile was loaded" end
+    local visited = {}
+    while existing[name] == nil and renames[name] ~= nil do
+        if visited[name] then return nil, "Profile rename cycle detected; no profile was loaded" end
+        visited[name] = true
+        name = renames[name]
+        if type(name) ~= "string" or name == "" then return nil, "Invalid profile rename destination" end
+    end
+    return name
+end
+
+function Import.Prepare(text, existing, definitions, options, renames, currentName)
     local ok, result = pcall(function()
         expect(type(existing) == "table" and type(definitions) == "table", "Profile database or condition definitions unavailable")
+        options, renames = options or {}, renames or {}
+        expect(type(options) == "table" and type(renames) == "table", "Invalid import options or profile rename records")
+        local mode = options.mode or "bulk"
+        expect(mode == "bulk" or mode == "current" or mode == "rename" or mode == "separate", "Unknown import action")
         local data = parseSavedVariables(text)
         local settings = data.Kong_Settings
         expect(settings == nil or type(settings) == "table", "Kong_Settings must be a table")
@@ -358,28 +400,58 @@ function Import.Prepare(text, existing, definitions)
             profiles = {[settings.profile or "legacy"] = {Frames = settings.Frames, Groups = settings.Groups or {}}}
         end
         expect(type(profiles) == "table" and next(profiles) ~= nil, "Paste account-wide Kong_Profiles data; character selection alone contains no profiles")
-        local names, reserved = {}, {}
+        local names, reserved, existingNames = {}, {}, {}
         for name in pairs(existing) do reserved[name] = true end
+        for name in pairs(renames) do reserved[name] = true end
+        for name in pairs(reserved) do existingNames[name] = true end
         for name in pairs(profiles) do
             expect(type(name) == "string" and name:find("%S") and #name <= 128 and not name:find("%c"), "Invalid legacy profile name")
             names[#names + 1] = name
         end
         expect(#names <= 256, "Import at most 256 profiles at a time")
         table.sort(names)
-        local plan = {profiles = {}, frames = 0, conditions = 0, enabled = true}
+        local plan = {profiles = {}, sources = names, frames = 0, conditions = 0, enabled = true, mode = mode, target = currentName}
         for _, oldName in ipairs(names) do
-            local base = oldName:lower():gsub("%s+", "_")
-            local name, suffix = base, 1
-            while reserved[name] do
-                name = base .. "_imported" .. (suffix == 1 and "" or "_" .. suffix)
-                suffix = suffix + 1
-            end
+            local base, err = Import.NormalizeProfileName(oldName)
+            expect(base ~= nil, err)
+            local name = uniqueName(base, reserved)
             reserved[name] = true
-            plan.profiles[#plan.profiles + 1] = {source = oldName, name = name, data = profile(profiles[oldName], definitions, plan)}
-            if settings and settings.profile == oldName then plan.selection = name end
+            local report = {frames = 0, conditions = 0}
+            local copy = profile(profiles[oldName], definitions, report)
+            plan.profiles[#plan.profiles + 1] = {source = oldName, name = name, data = copy, frames = report.frames, conditions = report.conditions}
+            plan.frames, plan.conditions = plan.frames + report.frames, plan.conditions + report.conditions
+            if settings and settings.profile == oldName then plan.selection, plan.sourceSelection = name, oldName end
         end
         if settings and settings.enabled ~= nil then expect(type(settings.enabled) == "boolean", "Legacy enabled setting must be a boolean"); plan.enabled = settings.enabled end
         if not plan.selection and #plan.profiles == 1 then plan.selection = plan.profiles[1].name end
+        if mode ~= "bulk" then
+            local sourceName = options.source or plan.sourceSelection or names[1]
+            local selected
+            for _, entry in ipairs(plan.profiles) do if entry.source == sourceName then selected = entry; break end end
+            expect(selected ~= nil, "Select an incoming profile present in the pasted data")
+            plan.source = sourceName
+            if mode == "current" or mode == "rename" then
+                expect(type(currentName) == "string" and type(existing[currentName]) == "table", "Current profile unavailable")
+                if mode == "current" then
+                    selected.name = currentName
+                else
+                    local name, err = Import.NormalizeProfileName(options.name)
+                    expect(name ~= nil, err)
+                    expect(name ~= currentName, "Choose a different name or import into the current profile")
+                    expect(existing[name] == nil, "Destination profile name already exists")
+                    if renames[name] ~= nil then
+                        expect(Import.ResolveProfileName(name, existing, renames) == currentName,
+                            "Destination name is reserved by another profile rename")
+                    end
+                    selected.name, plan.renameFrom = name, currentName
+                end
+                plan.replaces = true
+            else
+                selected.name = uniqueName(assert(Import.NormalizeProfileName(sourceName)), existingNames)
+            end
+            plan.profiles, plan.selection = {selected}, selected.name
+            plan.frames, plan.conditions = selected.frames, selected.conditions
+        end
         return plan
     end)
     if ok then return result end
