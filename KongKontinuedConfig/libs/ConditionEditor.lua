@@ -140,7 +140,7 @@ local function OnClick(Editor, key, text, button)
     self.Dropdown:Sort()
     self.Dropdown:AddItem(CANCEL)
     
-	ToggleDropDownMenu(nil, nil, self.Dropdown.dropdown, Kong_GetMouseFocus() or UIParent, 0, 0, self.Dropdown.menuList)
+	ToggleDropDownMenu(nil, nil, self.Dropdown.dropdown, KongKontinued_GetMouseFocus() or UIParent, 0, 0, self.Dropdown.menuList)
         
     self.selectedKey = key
 end

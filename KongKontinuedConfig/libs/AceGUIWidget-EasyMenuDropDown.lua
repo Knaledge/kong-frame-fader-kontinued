@@ -52,7 +52,7 @@ end
 hooksecurefunc("ToggleDropDownMenu", function(level) 
 	if level and not InCombatLockdown() then
 		local listFrame = _G["DropDownList"..level];
-		if not Kong_CanAccessFrame(listFrame) then return end
+		if not KongKontinued_CanAccessFrame(listFrame) then return end
 		local top, parentTop = listFrame:GetTop(), UIParent:GetTop()
 		if issecretvalue and (issecretvalue(top) or issecretvalue(parentTop)) then return end
 		if type(top) == "number" and type(parentTop) == "number" and top > parentTop then
@@ -61,7 +61,7 @@ hooksecurefunc("ToggleDropDownMenu", function(level)
 					listFrame:GetPoint(i)
 				if not (issecretvalue and (issecretvalue(point) or issecretvalue(anchorFrame)
 					or issecretvalue(relativePoint) or issecretvalue(xOffset) or issecretvalue(yOffset)))
-					and (anchorFrame == nil or Kong_CanAccessFrame(anchorFrame)) then
+					and (anchorFrame == nil or KongKontinued_CanAccessFrame(anchorFrame)) then
 					listFrame:SetPoint(point, anchorFrame, relativePoint, xOffset, parentTop - top - 14)
 				end
 			end

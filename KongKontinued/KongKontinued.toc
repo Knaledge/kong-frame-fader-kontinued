@@ -1,9 +1,10 @@
-## Interface: 11504, 40400, 120105
-## Title: Kong
+## Interface: 120105
+## Title: Kong Frame Fader Kontinued
 ## Author: Xentaros
+## Version: 0.1.0-dev
 ## Notes: Fades UI regions in and out based on user-specified conditions.
-## SavedVariablesPerCharacter: Kong_Settings
-## SavedVariables: Kong_Profiles
+## SavedVariablesPerCharacter: KongKontinued_Settings
+## SavedVariables: KongKontinued_Profiles
 ## OptionalDeps: Tukui, SexyMap
 
 libs\LibStub\LibStub.lua
@@ -13,5 +14,6 @@ classes\EventDispatcher.lua
 classes\Fader.lua
 classes\ObjectPool.lua
 
-Kong.lua
+LegacyImport.lua
+KongKontinued.lua
 CommandLine.lua

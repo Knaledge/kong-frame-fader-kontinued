@@ -1,0 +1,16 @@
+## Interface: 120105
+## Title: Kong Frame Fader Kontinued Configuration
+## Author: Xentaros
+## Version: 0.1.0-dev
+## Notes: Configuration and legacy import for Kong Frame Fader Kontinued.
+## Dependencies: KongKontinued
+## LoadOnDemand: 1
+
+libs\CallbackHandler-1.0\CallbackHandler-1.0.xml
+libs\AceGUI-3.0\AceGUI-3.0.xml
+libs\AceGUIWidget-CollapsibleGroup.lua
+libs\AceGUIWidget-EasyMenuDropDown.lua
+libs\ConditionEditor.lua
+
+KongKontinuedConfig.lua
+LegacyImportUI.lua

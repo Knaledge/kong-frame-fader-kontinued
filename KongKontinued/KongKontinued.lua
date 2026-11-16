@@ -1,5 +1,5 @@
-﻿local	_G, assert, ipairs, loadstring, math, next, pairs, pcall, print, setmetatable, string, table, tonumber, tostring, type, xpcall
-=		_G, assert, ipairs, loadstring, math, next, pairs, pcall, print, setmetatable, string, table, tonumber, tostring, type, xpcall
+﻿local	_G, assert, ipairs, math, next, pairs, pcall, print, setmetatable, string, table, tonumber, tostring, type, xpcall
+=		_G, assert, ipairs, math, next, pairs, pcall, print, setmetatable, string, table, tonumber, tostring, type, xpcall
 local	CreateFrame, debugstack, GetMouseFoci, GetMouseFocus, GetRealmName, GetTime, hooksecurefunc, IsAddOnLoaded, StaticPopup_Show, strsplit, UnitName, WOW_PROJECT_CLASSIC, WOW_PROJECT_ID, WOW_PROJECT_MAINLINE
 =		CreateFrame, debugstack, GetMouseFoci, GetMouseFocus, GetRealmName, GetTime, hooksecurefunc, IsAddOnLoaded, StaticPopup_Show, strsplit, UnitName, WOW_PROJECT_CLASSIC, WOW_PROJECT_ID, WOW_PROJECT_MAINLINE
 
@@ -35,16 +35,16 @@ local function SetFrameShown(region, shown)
 end
 
 function A.ApplyPendingVisibility()
-	if Kong_Settings and Kong_Settings.enabled then
-		for region, setting in pairs(Kong_Frames) do
-			if setting.overrideAlpha then Kong_OverrideAlpha(region, true) end
+	if KongKontinued_Settings and KongKontinued_Settings.enabled then
+		for region, setting in pairs(KongKontinued_Frames) do
+			if setting.overrideAlpha then KongKontinued_OverrideAlpha(region, true) end
 		end
 	end
 	for region in pairs(PendingRestores) do
 		if R.Fader.setAlpha(FADER, region, 1) then PendingRestores[region] = nil end
 	end
 	for region, shown in pairs(PendingVisibility) do
-		local setting = Kong_Frames[region]
+		local setting = KongKontinued_Frames[region]
 		local alpha = R.Fader.getAlpha(FADER, region)
 		if shown or (setting and setting.hideAtZeroAlpha and (alpha == nil or alpha == 0)) then
 			SetFrameShown(region, shown)
@@ -56,7 +56,7 @@ end
 
 R.Fader.addListener(FADER, "FADE_STARTED", 
 		function(obj, event, region, fromAlpha, toAlpha, duration, smoothing, startDelay, endDelay)
-			local setting = Kong_Frames[region]
+			local setting = KongKontinued_Frames[region]
 			PendingRestores[region] = nil
 			PendingVisibility[region] = nil
 			if ( setting and setting.hideAtZeroAlpha
@@ -68,7 +68,7 @@ R.Fader.addListener(FADER, "FADE_STARTED",
 )
 R.Fader.addListener(FADER, "FADE_FINISHED", 
 		function(obj, event, region, toAlpha)
-			local setting = Kong_Frames[region]
+			local setting = KongKontinued_Frames[region]
 			local alpha = R.Fader.getAlpha(FADER, region)
 			if ( setting and setting.hideAtZeroAlpha and (alpha == 0 or (alpha == nil and toAlpha == 0)) ) then
 				SetFrameShown(region, false)
@@ -78,15 +78,15 @@ R.Fader.addListener(FADER, "FADE_FINISHED",
 )
 
 
-BINDING_HEADER_KONG = "Kong Automatic UI Hider"
-BINDING_NAME_KONG_ENABLE = "Enable UI Fading"
-BINDING_NAME_KONG_DISABLE = "Disable UI Fading"
-BINDING_NAME_KONG_TOGGLE = "Toggle UI Fading On/Off"
-BINDING_NAME_KONG_CONFIG = "Open Config GUI"
-local VERSION = "1.6a"
+BINDING_HEADER_KONGKONTINUED = "Kong Frame Fader Kontinued"
+BINDING_NAME_KONGKONTINUED_ENABLE = "Enable UI Fading"
+BINDING_NAME_KONGKONTINUED_DISABLE = "Disable UI Fading"
+BINDING_NAME_KONGKONTINUED_TOGGLE = "Toggle UI Fading On/Off"
+BINDING_NAME_KONGKONTINUED_CONFIG = "Open Config GUI"
+local VERSION = "0.1.0-dev"
 
-Kong_Frames = {}
-Kong_Profiles = {}
+KongKontinued_Frames = {}
+KongKontinued_Profiles = {}
 
 local lastMouseFocus = nil
 local lastMouseStart = nil
@@ -95,17 +95,17 @@ local CANNOT_SAVE = "Nameless frames cannot be saved."
 local PROFILE_RESET = "Current profile %q has been reset."
 local WELCOME = "New character detected. Type |cFF33FF99/Kong|r to configure."
 
-StaticPopupDialogs["KONG_RESET"] = {
+StaticPopupDialogs["KONGKONTINUED_RESET"] = {
 	text = "Are you sure you want to delete all settings from the Kong profile \"%s\"?",
 	button1 = "Reset",
 	button2 = CANCEL,
 	OnAccept = function(self)
 
-		Kong_Unload()
-		Kong_Profiles[Kong_Settings.profile] = nil
+		KongKontinued_Unload()
+		KongKontinued_Profiles[KongKontinued_Settings.profile] = nil
 		A.LoadSettings()
 
-		Kong_Info(PROFILE_RESET, Kong_Settings.profile)
+		KongKontinued_Info(PROFILE_RESET, KongKontinued_Settings.profile)
 	end,
 	showAlert = 1,
 	timeout = 0,
@@ -122,27 +122,27 @@ local TriggerDefaults = {
 	alphaOut = 0,
 }
 
-function Kong_CanAccessFrame(region)
+function KongKontinued_CanAccessFrame(region)
 	return R.Fader.canAccess(FADER, region)
 end
 
-function Kong_GetFrameParent(region)
-	if not Kong_CanAccessFrame(region) or type(region.GetParent) ~= "function" then return nil end
+function KongKontinued_GetFrameParent(region)
+	if not KongKontinued_CanAccessFrame(region) or type(region.GetParent) ~= "function" then return nil end
 	local parent = region:GetParent()
-	if Kong_CanAccessFrame(parent) then return parent end
+	if KongKontinued_CanAccessFrame(parent) then return parent end
 end
 
-function Kong_GetFrameChildren(region)
+function KongKontinued_GetFrameChildren(region)
 	local children = {}
-	if Kong_CanAccessFrame(region) and type(region.GetChildren) == "function" then
+	if KongKontinued_CanAccessFrame(region) and type(region.GetChildren) == "function" then
 		for _, child in pairs({region:GetChildren()}) do
-			if Kong_CanAccessFrame(child) then children[#children + 1] = child end
+			if KongKontinued_CanAccessFrame(child) then children[#children + 1] = child end
 		end
 	end
 	return children
 end
 
-function Kong_GetMouseFocus()
+function KongKontinued_GetMouseFocus()
 	local focus
 	if GetMouseFoci then
 		local foci = GetMouseFoci()
@@ -150,24 +150,24 @@ function Kong_GetMouseFocus()
 	elseif GetMouseFocus then
 		focus = GetMouseFocus()
 	end
-	if Kong_CanAccessFrame(focus) then return focus end
+	if KongKontinued_CanAccessFrame(focus) then return focus end
 end
 
-function Kong_Error(str, ...)
-	print("|cFFFF2222Kong Error:|r "..string.format(str, ...))
+function KongKontinued_Error(str, ...)
+	print("|cFFFF2222Kong Kontinued Error:|r "..string.format(str, ...))
 end
 
-function Kong_Warning(str, ...)
-	print("|cFFFF9922Kong Warning:|r "..string.format(str, ...))
+function KongKontinued_Warning(str, ...)
+	print("|cFFFF9922Kong Kontinued Warning:|r "..string.format(str, ...))
 end
 
-function Kong_Info(str, ...)
-	print("|cFF33FF99Kong:|r "..string.format(str, ...))
+function KongKontinued_Info(str, ...)
+	print("|cFF33FF99Kong Kontinued:|r "..string.format(str, ...))
 end
 
 local LibUSC = LibStub("LibUserSpecifiedConditions", true)
 if not LibUSC then
-	Kong_Error("Kong does not appear to have been installed correctly. Note: A full restart of "
+	KongKontinued_Error("Kong Kontinued does not appear to have been installed correctly. Note: A full restart of "
 			 .."World of Warcraft is required when upgrading from a previous version of Kong.")
 	return
 end
@@ -180,13 +180,40 @@ LibUSC:RegisterParameter(MouseoverTypeName, {
 	value = false,
 })
 
+-- Preview and commit both validate fresh data; callers cannot submit a modified plan.
+function KongKontinued_PreviewLegacyImport(text)
+	return A.LegacyImport.Prepare(text, KongKontinued_Profiles, LibUSC.Parameters)
+end
+
+function KongKontinued_ImportLegacy(text, activate)
+	if InCombatLockdown() then return nil, "Legacy import is unavailable during combat" end
+	if KongKontinuedConfig and KongKontinuedConfig:IsShown() then
+		return nil, "Close the configuration screen before importing"
+	end
+	local plan, err = KongKontinued_PreviewLegacyImport(text)
+	if not plan then return nil, err end
+	if activate and not plan.selection then return nil, "No legacy character profile was selected" end
+	for _, entry in ipairs(plan.profiles) do
+		entry.data.version = VERSION
+		for _, setting in ipairs(entry.data.Frames) do setting.version = VERSION end
+		KongKontinued_Profiles[entry.name] = entry.data
+	end
+	if activate then
+		KongKontinued_Unload()
+		KongKontinued_Settings.profile = plan.selection
+		KongKontinued_Settings.enabled = plan.enabled
+		A.LoadSettings()
+	end
+	return plan
+end
+
 local AlphaOverrides = {}
 
-function Kong_OverrideAlpha(region, override)
-	assert(Kong_Frames[region] ~= nil)
+function KongKontinued_OverrideAlpha(region, override)
+	assert(KongKontinued_Frames[region] ~= nil)
 	local state = AlphaOverrides[region]
 
-	if ( override and Kong_Settings.enabled and R.Fader.canAccess(FADER, region) ) then
+	if ( override and KongKontinued_Settings.enabled and R.Fader.canAccess(FADER, region) ) then
 		if ( state ~= nil ) then return end
 		state = {
 			original = rawget(region, "SetAlpha"),
@@ -203,8 +230,8 @@ function Kong_OverrideAlpha(region, override)
 	end
 end
 
-function Kong_Fade(region, fromAlpha, toAlpha, duration, startDelay)
-	if ( Kong_Settings.enabled and (KongConfig == nil or not KongConfig:IsShown()) ) then
+function KongKontinued_Fade(region, fromAlpha, toAlpha, duration, startDelay)
+	if ( KongKontinued_Settings.enabled and (KongKontinuedConfig == nil or not KongKontinuedConfig:IsShown()) ) then
 		R.Fader.fade(FADER, region, fromAlpha, toAlpha, duration, nil, startDelay)
 	end
 end
@@ -212,9 +239,9 @@ end
 local function RestoreFrame(region)
 	-- Finish cleanup before the frame's settings can be removed or replaced.
 	R.Fader.stopFade(FADER, region)
-	Kong_OverrideAlpha(region, false)
+	KongKontinued_OverrideAlpha(region, false)
 	local reveal = HiddenFrames[region] or PendingVisibility[region] == true
-		or (Kong_Frames[region].hideAtZeroAlpha and R.Fader.getAlpha(FADER, region) == 0)
+		or (KongKontinued_Frames[region].hideAtZeroAlpha and R.Fader.getAlpha(FADER, region) == 0)
 	PendingVisibility[region] = nil
 	if reveal then
 		SetFrameShown(region, true)
@@ -222,8 +249,8 @@ local function RestoreFrame(region)
 	if not R.Fader.setAlpha(FADER, region, 1) then PendingRestores[region] = true end
 end
 
-function Kong_UpdateFrameVisibility(region)
-	if not Kong_Frames[region].hideAtZeroAlpha then
+function KongKontinued_UpdateFrameVisibility(region)
+	if not KongKontinued_Frames[region].hideAtZeroAlpha then
 		local reveal = HiddenFrames[region] or PendingVisibility[region] == true
 		PendingVisibility[region] = nil
 		if reveal then SetFrameShown(region, true) end
@@ -255,7 +282,7 @@ local function GetFadeDuration(currentAlpha, endAlpha, speed)
 end
 
 function A.CalculateFadeIn(region)
-	local setting = Kong_Frames[region]
+	local setting = KongKontinued_Frames[region]
 	local currentAlpha = R.Fader.getAlpha(FADER, region)
 	local chosenTrigger
 	
@@ -278,14 +305,14 @@ function A.CalculateFadeIn(region)
 		local speed = GetFadeSpeed(chosenTrigger, chosenTrigger.secondsIn)
 		local duration = GetFadeDuration(currentAlpha, endAlpha, speed)
 		
-		Kong_Fade(region, currentAlpha, endAlpha, duration)
+		KongKontinued_Fade(region, currentAlpha, endAlpha, duration)
 	end
 end
 
 function A.FadeOut(region, condition)
 	condition.refs = condition.refs - 1
 	if condition.refs < 0 then
-		local setting = Kong_Frames[region]
+		local setting = KongKontinued_Frames[region]
 		error("ref < 0 for region: " .. tostring(setting and setting.index or "<unnamed>"))
 	end
 	if ( condition.refs == 0 ) then
@@ -300,12 +327,12 @@ function A.FadeOut(region, condition)
 			end
 		end
 		condition.lastFadeTime = GetTime() + displacement
-		Kong_CalculateFadeOut(region)
+		KongKontinued_CalculateFadeOut(region)
 	end
 end
 
-function Kong_CalculateFadeOut(region)
-	local setting = Kong_Frames[region]
+function KongKontinued_CalculateFadeOut(region)
+	local setting = KongKontinued_Frames[region]
 	local currentAlpha = R.Fader.getAlpha(FADER, region)
 	local endAlpha = setting.TriggerDefaults.alphaOut
 	local duration = 0
@@ -339,11 +366,11 @@ function Kong_CalculateFadeOut(region)
 		delay = chosenTrigger.secondsTillOut
 	end
 
-	Kong_Fade(region, currentAlpha, endAlpha, duration, delay)
+	KongKontinued_Fade(region, currentAlpha, endAlpha, duration, delay)
 end
 
-function Kong_FindGlobalIndex(region)
-	if not Kong_CanAccessFrame(region) then return nil end
+function KongKontinued_FindGlobalIndex(region)
+	if not KongKontinued_CanAccessFrame(region) then return nil end
 	local name = region:GetName()
 	if not (issecretvalue and issecretvalue(name)) and type(name) == "string" then
 		return '[' .. string.format("%q", name) .. ']'
@@ -360,8 +387,8 @@ function Kong_FindGlobalIndex(region)
 		end
 	end
 	
-	for i, child in pairs(Kong_GetFrameChildren(region)) do
-		name = Kong_FindGlobalIndex(child)
+	for i, child in pairs(KongKontinued_GetFrameChildren(region)) do
+		name = KongKontinued_FindGlobalIndex(child)
 		if ( name ) then
 			return name .. ":GetParent()"
 		end
@@ -371,9 +398,9 @@ end
 function A.CreateTrigger(Frame)
 
 	local Trigger = {}
-	setmetatable(Trigger, {__index = Kong_Frames[Frame].TriggerDefaults or TriggerDefaults})
+	setmetatable(Trigger, {__index = KongKontinued_Frames[Frame].TriggerDefaults or TriggerDefaults})
 
-	if Kong_Frames[Frame].TriggerDefaults then
+	if KongKontinued_Frames[Frame].TriggerDefaults then
 		Trigger.refs = 0
 	else
 		Trigger.Frame = Frame
@@ -382,37 +409,37 @@ function A.CreateTrigger(Frame)
 	return Trigger
 end
 
-function Kong_RegisterFrame(region)
-	if not Kong_CanAccessFrame(region) then return end
-	Kong_Frames[region] = {}
-	local index = Kong_FindGlobalIndex(region)
+function KongKontinued_RegisterFrame(region)
+	if not KongKontinued_CanAccessFrame(region) then return end
+	KongKontinued_Frames[region] = {}
+	local index = KongKontinued_FindGlobalIndex(region)
 	if ( index ~= nil ) then
-		Kong_Frames[region].index = index
+		KongKontinued_Frames[region].index = index
 	else
-		Kong_Frames[region].index = {}
-		Kong_Warning(CANNOT_SAVE)
+		KongKontinued_Frames[region].index = {}
+		KongKontinued_Warning(CANNOT_SAVE)
 	end
-	Kong_Frames[region].version = VERSION
-	Kong_Frames[region].TriggerDefaults = A.CreateTrigger(region)
-	Kong_Frames[region].Mouseover = Kong_AddTrigger(region, LibUSC:Create("Condition", LibUSC:Create(MouseoverTypeName)))
-	Kong_AddTrigger(region, LibUSC:Create("Condition", LibUSC:Create("Unit in Combat")))
+	KongKontinued_Frames[region].version = VERSION
+	KongKontinued_Frames[region].TriggerDefaults = A.CreateTrigger(region)
+	KongKontinued_Frames[region].Mouseover = KongKontinued_AddTrigger(region, LibUSC:Create("Condition", LibUSC:Create(MouseoverTypeName)))
+	KongKontinued_AddTrigger(region, LibUSC:Create("Condition", LibUSC:Create("Unit in Combat")))
 end
 
-function Kong_UnregisterFrame(region)
-	for i = #Kong_Frames[region], 1, -1 do
-		Kong_RemoveTrigger(region, Kong_Frames[region][i])
+function KongKontinued_UnregisterFrame(region)
+	for i = #KongKontinued_Frames[region], 1, -1 do
+		KongKontinued_RemoveTrigger(region, KongKontinued_Frames[region][i])
 	end
 	RestoreFrame(region)
-	local index = Kong_Frames[region].index
-	for name, group in pairs(Kong_Settings.Groups) do
+	local index = KongKontinued_Frames[region].index
+	for name, group in pairs(KongKontinued_Settings.Groups) do
 		if ( group[index] ~= nil ) then
 			group[index] = nil
 			if ( next(group) == nil ) then
-				Kong_Settings.Groups[name] = nil
+				KongKontinued_Settings.Groups[name] = nil
 			end
 		end
 	end
-	Kong_Frames[region] = nil
+	KongKontinued_Frames[region] = nil
 end
 
 function A.OnConditionStateChange(region, trigger)
@@ -423,121 +450,121 @@ function A.OnConditionStateChange(region, trigger)
 	end
 end
 
-function Kong_AddTrigger(region, condition)
+function KongKontinued_AddTrigger(region, condition)
 	local trigger = A.CreateTrigger(region)
 	trigger.Condition = condition
 	trigger.Condition:AddListener(A.OnConditionStateChange, region, trigger)
-	table.insert(Kong_Frames[region], trigger)
+	table.insert(KongKontinued_Frames[region], trigger)
 	if ( trigger.Condition:IsMet() ) then
 		A.FadeIn(region, trigger)
 	end
 	return trigger
 end
 
-function Kong_RemoveTrigger(region, trigger)
+function KongKontinued_RemoveTrigger(region, trigger)
 	if ( trigger.Condition:IsMet() ) then
 		A.FadeOut(region, trigger)
 	end
 	trigger.Condition:RemoveListener(A.OnConditionStateChange)
 	LibUSC:Deflate(trigger.Condition)
-	if Kong_Frames[region].Mouseover == trigger then Kong_Frames[region].Mouseover = nil end
-	for i, v in ipairs(Kong_Frames[region]) do
+	if KongKontinued_Frames[region].Mouseover == trigger then KongKontinued_Frames[region].Mouseover = nil end
+	for i, v in ipairs(KongKontinued_Frames[region]) do
 		if ( v == trigger ) then
-			table.remove(Kong_Frames[region], i)
+			table.remove(KongKontinued_Frames[region], i)
 			break
 		end
 	end
 end
 
-function Kong_AddFrameToGroup(region, name)
-	Kong_Settings.Groups[name] = Kong_Settings.Groups[name] or {}
-	local group = Kong_Settings.Groups[name]
-	local index = Kong_Frames[region].index
+function KongKontinued_AddFrameToGroup(region, name)
+	KongKontinued_Settings.Groups[name] = KongKontinued_Settings.Groups[name] or {}
+	local group = KongKontinued_Settings.Groups[name]
+	local index = KongKontinued_Frames[region].index
 	if ( group[index] == nil ) then
 		group[index] = region
 		return true
 	end
 end
 
-function Kong_RemoveFrameFromGroup(region, name)
-	local group = Kong_Settings.Groups[name]
-	local index = Kong_Frames[region].index
+function KongKontinued_RemoveFrameFromGroup(region, name)
+	local group = KongKontinued_Settings.Groups[name]
+	local index = KongKontinued_Frames[region].index
 	if ( group ~= nil and group[index] ~= nil ) then
 		group[index] = nil
 		if ( next(group) == nil ) then
-			Kong_Settings.Groups[name] = nil
+			KongKontinued_Settings.Groups[name] = nil
 		end
 		return true
 	end
 end
 
 function A.Enable()
-	Kong_Settings.enabled = true
-	for Frame, setting in pairs(Kong_Frames) do
-		Kong_OverrideAlpha(Frame, setting.overrideAlpha)
-		Kong_CalculateFadeOut(Frame)
+	KongKontinued_Settings.enabled = true
+	for Frame, setting in pairs(KongKontinued_Frames) do
+		KongKontinued_OverrideAlpha(Frame, setting.overrideAlpha)
+		KongKontinued_CalculateFadeOut(Frame)
 	end
 end
 
 function A.Disable()
-	Kong_Settings.enabled = false
-	for Frame in pairs(Kong_Frames) do
+	KongKontinued_Settings.enabled = false
+	for Frame in pairs(KongKontinued_Frames) do
 		RestoreFrame(Frame)
 	end
 end
 
-function Kong_RenameFrame(region, newIndex)
-	local index = Kong_Frames[region].index
-	for name, group in pairs(Kong_Settings.Groups) do
+function KongKontinued_RenameFrame(region, newIndex)
+	local index = KongKontinued_Frames[region].index
+	for name, group in pairs(KongKontinued_Settings.Groups) do
 		if ( group[index] ~= nil ) then
 			group[index] = nil
 			group[newIndex] = region
 		end
 	end
-	Kong_Frames[region].index = newIndex
+	KongKontinued_Frames[region].index = newIndex
 end
 
 function A.LoadSettings()
-	if ( Kong_Initialized ) then return end
-	Kong_Initialized = true
+	if ( KongKontinued_Initialized ) then return end
+	KongKontinued_Initialized = true
 	
-	if ( not Kong_Settings or not Kong_Settings.profile ) then
+	if ( not KongKontinued_Settings or not KongKontinued_Settings.profile ) then
 		local playerName = string.lower( UnitName("player") )
 		local playerServer = string.lower( string.gsub(GetRealmName(), " ", "_") )
 		local profileName = playerName .. "_of_" .. playerServer
 		
-		Kong_Settings = {
+		KongKontinued_Settings = {
 			profile = profileName,
 			enabled = true,
 		}
 	end
 
-	Kong_Settings.profile = string.gsub(Kong_Settings.profile, " ", "_")
+	KongKontinued_Settings.profile = string.gsub(KongKontinued_Settings.profile, " ", "_")
 	
-	if ( not Kong_Profiles[Kong_Settings.profile] ) then
-		Kong_Profiles[Kong_Settings.profile] = {
+	if ( not KongKontinued_Profiles[KongKontinued_Settings.profile] ) then
+		KongKontinued_Profiles[KongKontinued_Settings.profile] = {
 			Frames = {},
 			Groups = {},
 		}
 	end
 	
-	setmetatable(Kong_Settings, {__index = Kong_Profiles[Kong_Settings.profile]})
+	setmetatable(KongKontinued_Settings, {__index = KongKontinued_Profiles[KongKontinued_Settings.profile]})
 
-	Kong_Profiles[Kong_Settings.profile].version = VERSION
+	KongKontinued_Profiles[KongKontinued_Settings.profile].version = VERSION
 
 	A.LoadFrames()
 
-	if ( not Kong_Settings.enabled ) then
-	   Kong_Warning("Kong is currently disabled. Use |cFF33FF99/kong toggle|r to enable it.")
+	if ( not KongKontinued_Settings.enabled ) then
+	   KongKontinued_Warning("Kong Kontinued is currently disabled. Use |cFF33FF99/kong toggle|r to enable it.")
 	end
 end
 
 function A.LoadFrames()
-	for i = #Kong_Settings.Frames, 1, -1 do
-		local setting = Kong_Settings.Frames[i]
+	for i = #KongKontinued_Settings.Frames, 1, -1 do
+		local setting = KongKontinued_Settings.Frames[i]
 		
 		if ( not setting.loader ) then
-			setting.loader = loadstring("return _G" .. setting.index)
+			setting.loader = A.LegacyImport.CompileFramePath(setting.index) or function() end
 		end
 
 		local isFound, region = pcall(setting.loader)
@@ -547,17 +574,17 @@ function A.LoadFrames()
 				and R.Fader.canAccess(FADER, region)
 				and type(region.IsObjectType) == "function"
 				and region:IsObjectType("Region") -- make sure it is a region; ticket #5
-				and not Kong_Frames[region]
+				and not KongKontinued_Frames[region]
 		) then
 			setting.loader = nil
-			Kong_Frames[region] = setting
-			table.remove(Kong_Settings.Frames, i)
+			KongKontinued_Frames[region] = setting
+			table.remove(KongKontinued_Settings.Frames, i)
 
 			setmetatable(setting.TriggerDefaults, {__index = TriggerDefaults})
 			setting.TriggerDefaults.Frame = region
 			
 			if ( setting.overrideAlpha ) then
-				Kong_OverrideAlpha(region, true)
+				KongKontinued_OverrideAlpha(region, true)
 			end
 			
 			for i, trigger in ipairs(setting) do
@@ -571,8 +598,8 @@ function A.LoadFrames()
 				end
 			end
 
-			if ( Kong_Settings.enabled ) then
-				Kong_CalculateFadeOut(region)
+			if ( KongKontinued_Settings.enabled ) then
+				KongKontinued_CalculateFadeOut(region)
 			end
 			
 			for i, trigger in ipairs(setting) do
@@ -581,7 +608,7 @@ function A.LoadFrames()
 				end
 			end
 			
-			for name, group in pairs(Kong_Settings.Groups) do
+			for name, group in pairs(KongKontinued_Settings.Groups) do
 				if ( group[setting.index] ) then
 					if setting.Mouseover then
 						for i = 1, group[setting.index] do A.FadeIn(region, setting.Mouseover) end
@@ -593,8 +620,8 @@ function A.LoadFrames()
 	end
 end
 
-function Kong_Unload()
-	for region, settings in pairs(Kong_Frames) do
+function KongKontinued_Unload()
+	for region, settings in pairs(KongKontinued_Frames) do
 		RestoreFrame(region)
 		
 		for i, trigger in ipairs(settings) do
@@ -608,47 +635,47 @@ function Kong_Unload()
 		settings.Mouseover = nil
 		settings.TriggerDefaults.Frame = nil
 		
-		Kong_Frames[region] = nil
+		KongKontinued_Frames[region] = nil
 		if ( type(settings.index) ~= "table" ) then
-			table.insert(Kong_Settings.Frames, settings)
+			table.insert(KongKontinued_Settings.Frames, settings)
 		end
 	end
 	
-	for name, group in pairs(Kong_Settings.Groups) do
+	for name, group in pairs(KongKontinued_Settings.Groups) do
 		for index in pairs(group) do
 			group[index] = 0
 		end
 	end
 	
-	Kong_Frames = {}
+	KongKontinued_Frames = {}
 	lastMouseFocus = nil
 	lastMouseStart = nil
-	Kong_Initialized = false
+	KongKontinued_Initialized = false
 end
 
 function A.FindFirstTrackedRegion(region)
-	while Kong_CanAccessFrame(region) do
-		if Kong_Frames[region] ~= nil then return region end
-		region = Kong_GetFrameParent(region)
+	while KongKontinued_CanAccessFrame(region) do
+		if KongKontinued_Frames[region] ~= nil then return region end
+		region = KongKontinued_GetFrameParent(region)
 	end
 end
 
 function A.ForEachTrackedRegion(region, func, ...)
 	if issecretvalue and issecretvalue(region) then return end
 	while ( region ~= nil ) do
-		if ( Kong_Frames[region] ~= nil ) then func(region, ...) end
-		region = Kong_GetFrameParent(region)
+		if ( KongKontinued_Frames[region] ~= nil ) then func(region, ...) end
+		region = KongKontinued_GetFrameParent(region)
 	end
 end
 
 function A.MouseoverRegionFader(region, func, additive)
-	local settings = Kong_Frames[region]
+	local settings = KongKontinued_Frames[region]
 	if not settings then return end
-	for name, group in pairs(Kong_Settings.Groups) do
+	for name, group in pairs(KongKontinued_Settings.Groups) do
 		if ( group[settings.index] ~= nil ) then
 			for index, groupRegion in pairs(group) do
 				if ( type(groupRegion) == "table" ) then -- TODO: remove value-type ambiguity
-					local groupSetting = Kong_Frames[groupRegion]
+					local groupSetting = KongKontinued_Frames[groupRegion]
 					if groupSetting and groupSetting.Mouseover then func(groupRegion, groupSetting.Mouseover) end
 				elseif type(groupRegion) == "number" then
 					group[index] = groupRegion + additive
@@ -669,7 +696,7 @@ function A.OnUpdate(self, elapsed)
 		A.LoadFrames()
 	end
 
-	local mouseFocus = Kong_GetMouseFocus()
+	local mouseFocus = KongKontinued_GetMouseFocus()
 	if ( mouseFocus ~= lastMouseFocus ) then
 		local mouseStart = mouseFocus ~= nil and A.FindFirstTrackedRegion(mouseFocus) or nil
 		if ( mouseStart ~= lastMouseStart ) then
@@ -688,28 +715,28 @@ end
 function A.OnEvent(self, event, arg1, ...)
 
 	if event == "ADDON_LOADED" then
-		if arg1 == "Kong" and not Kong_Settings then
-			Kong_Info(WELCOME)
+		if arg1 == "KongKontinued" and not KongKontinued_Settings then
+			KongKontinued_Info(WELCOME)
 		end
 	elseif event == "PLAYER_LOGIN" then
 
 		A.LoadSettings()
 		
 		hooksecurefunc("CreateFrame", function() frameFindTimer = 0; end)
-		KongUIFader:SetScript("OnUpdate", A.OnUpdate)
+		KongKontinuedUIFader:SetScript("OnUpdate", A.OnUpdate)
 	elseif event == "PLAYER_LOGOUT" then
-		xpcall(Kong_Unload, function(message) Kong_Settings.error = message.."\n"..debugstack() end)
+		xpcall(KongKontinued_Unload, function(message) KongKontinued_Settings.error = message.."\n"..debugstack() end)
 	elseif event == "PLAYER_REGEN_ENABLED" or event == "PLAYER_ENTERING_WORLD" then
 		A.ApplyPendingVisibility()
 	end
 end
 
 -- The event receiver frame
-KongUIFader = CreateFrame("Frame")
-KongUIFader:SetScript("OnEvent", A.OnEvent)
+KongKontinuedUIFader = CreateFrame("Frame")
+KongKontinuedUIFader:SetScript("OnEvent", A.OnEvent)
 
-KongUIFader:RegisterEvent("ADDON_LOADED")
-KongUIFader:RegisterEvent("PLAYER_LOGIN")
-KongUIFader:RegisterEvent("PLAYER_LOGOUT")
-KongUIFader:RegisterEvent("PLAYER_REGEN_ENABLED")
-KongUIFader:RegisterEvent("PLAYER_ENTERING_WORLD")
+KongKontinuedUIFader:RegisterEvent("ADDON_LOADED")
+KongKontinuedUIFader:RegisterEvent("PLAYER_LOGIN")
+KongKontinuedUIFader:RegisterEvent("PLAYER_LOGOUT")
+KongKontinuedUIFader:RegisterEvent("PLAYER_REGEN_ENABLED")
+KongKontinuedUIFader:RegisterEvent("PLAYER_ENTERING_WORLD")
