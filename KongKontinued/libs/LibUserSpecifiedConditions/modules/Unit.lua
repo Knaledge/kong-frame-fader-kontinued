@@ -1,4 +1,4 @@
-local LibUSC = LibStub and LibStub("LibUserSpecifiedConditions", true)
+local LibUSC = LibStub and LibStub("KongKontinuedConditions", true)
 if not LibUSC then return end
 
 local CATEGORY = "Unit"

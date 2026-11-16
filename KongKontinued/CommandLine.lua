@@ -150,6 +150,8 @@ function A.CommandHandler(args)
 	elseif ( command == "import" ) then
 		if InCombatLockdown() then
 			KongKontinued_Warning("Legacy import cannot be opened during combat")
+		elseif not KongKontinued_ConfirmLegacyDisabled() then
+			return
 		elseif C_AddOns.LoadAddOn("KongKontinuedConfig") then
 			KongKontinuedConfig_ShowLegacyImport()
 		else

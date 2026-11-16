@@ -1,4 +1,5 @@
-local LibUSC = LibStub and LibStub:NewLibrary("LibUserSpecifiedConditions", 9)
+-- Keep legacy Kong's live conditions and subscriptions intact during migration.
+local LibUSC = LibStub and LibStub:NewLibrary("KongKontinuedConditions", 9)
 if not LibUSC then return end -- no upgrade necessary
 
 local pairs = _G.pairs;

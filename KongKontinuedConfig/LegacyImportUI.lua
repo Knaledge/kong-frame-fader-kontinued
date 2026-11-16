@@ -16,6 +16,7 @@ local function invalidate()
 end
 
 local function preview()
+    if not KongKontinued_ConfirmLegacyDisabled() then invalidate(); return end
     invalidate()
     local plan, err = KongKontinued_PreviewLegacyImport(input:GetText())
     if not plan then window:SetStatusText(err); return end
@@ -45,6 +46,7 @@ function KongKontinuedConfig_ShowLegacyImport()
         KongKontinued_Warning("Legacy import cannot be opened during combat")
         return
     end
+    if not KongKontinued_ConfirmLegacyDisabled() then return end
     if KongKontinuedConfig and KongKontinuedConfig:IsShown() then KongKontinuedConfig:Hide() end
     if not window then
         window = AceGUI:Create("Frame")
@@ -86,6 +88,7 @@ function KongKontinuedConfig_ShowLegacyImport()
         importButton:SetText("Import Profiles")
         importButton:SetCallback("OnClick", function()
             if not previewSignature then return end
+            if not KongKontinued_ConfirmLegacyDisabled() then invalidate(); return end
             local plan, err = KongKontinued_PreviewLegacyImport(input:GetText())
             if not plan then invalidate(); window:SetStatusText(err); return end
             if signature(plan) ~= previewSignature then

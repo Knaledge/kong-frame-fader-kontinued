@@ -2,11 +2,11 @@
 -- ConditionEditor
 -- An interface for configuring LibUSC conditions
 --------------------------------------------------------------------------------
-local Type, Version = "ConditionEditor", 4
+local Type, Version = "KongKontinuedConditionEditor", 4
 local AceGUI = LibStub and LibStub("AceGUI-3.0", true)
 if not AceGUI or (AceGUI:GetWidgetVersion(Type) or 0) >= Version then return end
 
-local LibUSC = LibStub("LibUserSpecifiedConditions")
+local LibUSC = LibStub("KongKontinuedConditions")
 
 local DEFAULT_COLOR = "|cFF00AAFF"
 local FOCUS_COLOR = "|cFFFFFFFF"
@@ -16,7 +16,7 @@ local DISABLED_COLOR = "|cFF888888"
 
 local CANCEL = "|TInterface/Buttons/UI-GroupLoot-Pass-Up:0:0:0:1|t Cancel"
 
-StaticPopupDialogs["LibUSC_EnterValue"] = {
+StaticPopupDialogs["KongKontinued_EnterValue"] = {
     text = "%s:",
     button1 = ACCEPT,
     button2 = CANCEL,
@@ -236,7 +236,7 @@ local function OnConditionChanged(Dropdown, _, value)
         end
     
         if UserEnteredParams then
-            local dialog = StaticPopup_Show("LibUSC_EnterValue", Parameter:GetName())
+            local dialog = StaticPopup_Show("KongKontinued_EnterValue", Parameter:GetName())
             if (dialog) then
                 dialog:GetEditBox():SetText(Parameter:GetValue())
                 dialog:GetEditBox():HighlightText()

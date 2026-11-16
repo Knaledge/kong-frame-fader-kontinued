@@ -32,6 +32,16 @@ actions; new assignments appear under Kong Frame Fader Kontinued.
 The game cannot read arbitrary files through an addon. Import therefore
 uses pasted SavedVariables data and does not require legacy Kong to run.
 
+If the known `Kong` or `KongConfig` addons are enabled for any character or
+still loaded, `/kongkontinued import` first offers **Disable and Reload**.
+Accepting disables those installed addon IDs for all characters, saves the
+enablement changes and reloads the UI. Cancelling changes nothing. Reopen
+the importer after reloading, then paste your data. Import is blocked until
+neither legacy addon is enabled or loaded; disabling alone does not unload
+code from the current session. The action is unavailable in combat and
+does not delete addon folders or legacy settings. Renamed forks with other
+addon IDs must be disabled manually.
+
 1. Keep a backup of the legacy SavedVariables files
 2. Open the account-wide `WTF/Account/<account>/SavedVariables/Kong.lua`
    in a text editor and copy its contents, including `Kong_Profiles = ...`

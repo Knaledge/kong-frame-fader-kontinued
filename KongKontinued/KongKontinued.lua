@@ -95,6 +95,66 @@ local CANNOT_SAVE = "Nameless frames cannot be saved."
 local PROFILE_RESET = "Current profile %q has been reset."
 local WELCOME = "New character detected. Type |cFF33FF99/Kong|r to configure."
 
+local LegacyAddOnIDs = {Kong = true, KongConfig = true}
+
+local function GetInstalledLegacyAddOns()
+	local addons = {}
+	for index = 1, C_AddOns.GetNumAddOns() do
+		local name = C_AddOns.GetAddOnInfo(index)
+		if LegacyAddOnIDs[name] then addons[#addons + 1] = name end
+	end
+	return addons
+end
+
+local function GetActiveLegacyAddOns()
+	local active = {}
+	for _, name in ipairs(GetInstalledLegacyAddOns()) do
+		-- The default enable-state query covers all characters, like the AddOns UI.
+		if C_AddOns.GetAddOnEnableState(name) > 0 or C_AddOns.IsAddOnLoaded(name) then
+			active[#active + 1] = name
+		end
+	end
+	return active
+end
+
+function KongKontinued_DisableLegacyAddOns()
+	if InCombatLockdown() then
+		KongKontinued_Warning("Legacy addons cannot be disabled during combat")
+		return
+	end
+	local addons = GetInstalledLegacyAddOns()
+	for _, name in ipairs(addons) do C_AddOns.DisableAddOn(name) end
+	C_AddOns.SaveAddOns()
+	for _, name in ipairs(addons) do
+		if C_AddOns.GetAddOnEnableState(name) > 0 then
+			KongKontinued_Error("Could not disable %s; disable legacy Kong in the AddOns screen before importing", name)
+			return
+		end
+	end
+	ReloadUI()
+end
+
+function KongKontinued_ConfirmLegacyDisabled()
+	local active = GetActiveLegacyAddOns()
+	if #active == 0 then return true end
+	if InCombatLockdown() then
+		KongKontinued_Warning("Disable legacy Kong and reload before importing; this action is unavailable during combat")
+		return false
+	end
+	StaticPopup_Show("KONGKONTINUED_DISABLE_LEGACY", table.concat(active, ", "))
+	return false
+end
+
+StaticPopupDialogs["KONGKONTINUED_DISABLE_LEGACY"] = {
+	text = "Legacy Kong detected: %s\n\nDisable Kong and KongConfig for all characters and reload before importing? Legacy settings files will be preserved. Any pasted import text will need to be pasted again after reloading.",
+	button1 = "Disable and Reload",
+	button2 = CANCEL,
+	OnAccept = KongKontinued_DisableLegacyAddOns,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = true,
+}
+
 StaticPopupDialogs["KONGKONTINUED_RESET"] = {
 	text = "Are you sure you want to delete all settings from the Kong profile \"%s\"?",
 	button1 = "Reset",
@@ -165,9 +225,9 @@ function KongKontinued_Info(str, ...)
 	print("|cFF33FF99Kong Kontinued:|r "..string.format(str, ...))
 end
 
-local LibUSC = LibStub("LibUserSpecifiedConditions", true)
+local LibUSC = LibStub("KongKontinuedConditions", true)
 if not LibUSC then
-	KongKontinued_Error("Could not load LibUserSpecifiedConditions. Check the KongKontinued folder and bundled library files.")
+	KongKontinued_Error("Could not load KongKontinuedConditions. Check the KongKontinued folder and bundled library files.")
 	return
 end
 
@@ -186,6 +246,7 @@ end
 
 function KongKontinued_ImportLegacy(text, activate)
 	if InCombatLockdown() then return nil, "Legacy import is unavailable during combat" end
+	if #GetActiveLegacyAddOns() > 0 then return nil, "Disable legacy Kong and reload before importing; use /kongkontinued import" end
 	if KongKontinuedConfig and KongKontinuedConfig:IsShown() then
 		return nil, "Close the configuration screen before importing"
 	end

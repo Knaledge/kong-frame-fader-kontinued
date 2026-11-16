@@ -32,7 +32,7 @@ local CANCEL = "|TInterface/Buttons/UI-GroupLoot-Pass-Up:0:0:0:1|t Cancel"
 
 
 local AceGUI = LibStub("AceGUI-3.0")
-local LibUSC = LibStub("LibUserSpecifiedConditions")
+local LibUSC = LibStub("KongKontinuedConditions")
 
 local Dropdown = LibStub("AceGUI-3.0"):Create("EasyMenuDropDown")
 
@@ -505,7 +505,7 @@ end
 
 function KongKontinuedConfig_CreateTriggerPanel(Trigger, isMouseover)
 
-    local ConditionEditor = AceGUI:Create("ConditionEditor")
+    local ConditionEditor = AceGUI:Create("KongKontinuedConditionEditor")
     ConditionEditor:SetFullWidth(true)
     ConditionEditor:SetEnabled(not isMouseover)
     ConditionEditor:AddCondition(Trigger.Condition)
