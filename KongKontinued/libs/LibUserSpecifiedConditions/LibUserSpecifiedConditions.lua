@@ -1,4 +1,4 @@
-local LibUSC = LibStub and LibStub:NewLibrary("LibUserSpecifiedConditions", 8)
+local LibUSC = LibStub and LibStub:NewLibrary("LibUserSpecifiedConditions", 9)
 if not LibUSC then return end -- no upgrade necessary
 
 local pairs = _G.pairs;
@@ -443,13 +443,15 @@ LibUSC.frame:SetScript("OnUpdate", function(_, elapsed)
     for Param, timer in pairs(LibUSC.UpdateListeners) do
         timer = timer - elapsed
         if timer <= 0 then
-            timer = Param.updatePeriod
+            -- Reset before dispatch so callbacks can remove or reschedule themselves.
+            LibUSC.UpdateListeners[Param] = Param.updatePeriod
             local result, errMsg = pcall(Param.OnUpdate, Param, elapsed)
             if not result then
                 geterrorhandler()(errMsg)
             end
+        else
+            LibUSC.UpdateListeners[Param] = timer
         end
-        LibUSC.UpdateListeners[Param] = timer
     end
 end)
 

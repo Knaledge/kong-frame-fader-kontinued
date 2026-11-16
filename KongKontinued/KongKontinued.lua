@@ -245,7 +245,11 @@ local function RestoreFrame(region)
 	if reveal then
 		SetFrameShown(region, true)
 	end
-	if not R.Fader.setAlpha(FADER, region, 1) then PendingRestores[region] = true end
+	if R.Fader.setAlpha(FADER, region, 1) then
+		PendingRestores[region] = nil
+	else
+		PendingRestores[region] = true
+	end
 end
 
 function KongKontinued_UpdateFrameVisibility(region)
