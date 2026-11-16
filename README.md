@@ -46,6 +46,13 @@ are excluded, and the source remains unchanged. Characters sharing the
 destination profile are affected. Combat or changed profiles invalidate
 confirmation. Cancelling changes nothing.
 
+Pending Add, Copy and Reset dialogs close when Advanced Config or legacy
+import is opened, profiles are changed or combat begins. Old confirmations
+cannot be reused after returning to the same profile. Profile-changing
+commands enforce the same combat, legacy-addon and open-editor checks as
+the Options UI. Copy from refreshes its enabled state as profiles are added
+or deleted.
+
 **Reset Profile** asks for confirmation naming the selected profile, then
 permanently clears all of its frames, fade settings, conditions and groups.
 The profile keeps its name, and this character's enabled state stays the

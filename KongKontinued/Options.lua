@@ -1,5 +1,6 @@
 local N, A = ...
 local category, enabledSetting, profileSetting, copySetting
+local copyInitializer
 local defaultsHiddenForKong = false
 
 BINDING_NAME_KONGKONTINUED_CONFIG = "Open Options"
@@ -29,6 +30,10 @@ function A.RefreshOptions()
     if enabledSetting then enabledSetting:NotifyUpdate() end
     if profileSetting then profileSetting:NotifyUpdate() end
     if copySetting then copySetting:NotifyUpdate() end
+    if copyInitializer and SettingsPanel:IsShown() then
+        local row = SettingsPanel:GetSettingsList().ScrollBox:FindFrame(copyInitializer)
+        if row then row:EvaluateState() end
+    end
 end
 
 local function OpenCompanion(show)
@@ -37,6 +42,7 @@ local function OpenCompanion(show)
         KongKontinued_Warning("Kong Kontinued Config is disabled or not installed")
         return
     end
+    KongKontinued_InvalidateProfileDialogs()
     HideUIPanel(SettingsPanel)
     CloseCompanionWindows()
     show()
@@ -134,10 +140,10 @@ local function RegisterOptions()
             if name ~= "" then A.ShowCopyProfile(name) end
             C_Timer.After(0, A.RefreshOptions)
         end)
-    local copy = Settings.CreateDropdown(category, copySetting, function() return GetProfileOptions(true) end,
+    copyInitializer = Settings.CreateDropdown(category, copySetting, function() return GetProfileOptions(true) end,
         "Replace the selected profile's configuration with an independent copy of another profile after confirmation")
-    ConfigureInitializer(copy)
-    copy:AddModifyPredicate(function()
+    ConfigureInitializer(copyInitializer)
+    copyInitializer:AddModifyPredicate(function()
         for name in pairs(KongKontinued_Profiles) do
             if name ~= KongKontinued_Settings.profile then return true end
         end
@@ -180,7 +186,12 @@ end
 
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_LOGIN")
-events:SetScript("OnEvent", function(self)
-    self:UnregisterEvent("PLAYER_LOGIN")
-    RegisterOptions()
+events:RegisterEvent("PLAYER_REGEN_DISABLED")
+events:SetScript("OnEvent", function(self, event)
+    if event == "PLAYER_LOGIN" then
+        self:UnregisterEvent("PLAYER_LOGIN")
+        RegisterOptions()
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        KongKontinued_InvalidateProfileDialogs()
+    end
 end)

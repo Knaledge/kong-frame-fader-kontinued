@@ -160,19 +160,10 @@ StaticPopupDialogs["KONGKONTINUED_RESET"] = {
 	button1 = "Reset Profile",
 	button2 = CANCEL,
 	OnAccept = function(self, target)
-		if not KongKontinued_Initialized or InCombatLockdown() then
-			KongKontinued_Warning("Profile reset is unavailable before login or during combat")
-			return
-		end
-		if type(target) ~= "table" or target.name ~= KongKontinued_Settings.profile
-			or target.profile ~= KongKontinued_Profiles[target.name] then
+		if not A.CanModifyProfiles() then return end
+		if not A.IsCurrentProfileTarget(target) then
 			KongKontinued_Warning("Current profile changed; no profile was reset")
 			return
-		end
-		if not KongKontinued_ConfirmLegacyDisabled() then return end
-		if KongKontinuedConfig and KongKontinuedConfig:IsShown() then KongKontinuedConfig:Hide() end
-		if KongKontinuedLegacyImportWindow and KongKontinuedLegacyImportWindow:IsShown() then
-			KongKontinuedLegacyImportWindow:Hide()
 		end
 
 		KongKontinued_Unload()
@@ -700,6 +691,7 @@ function A.LoadFrames()
 end
 
 function KongKontinued_Unload()
+	if KongKontinued_InvalidateProfileDialogs then KongKontinued_InvalidateProfileDialogs() end
 	for region, settings in pairs(KongKontinued_Frames) do
 		RestoreFrame(region)
 		

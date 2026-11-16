@@ -112,6 +112,7 @@ function KongKontinuedConfig_Show()
         return
     end
     if not KongKontinued_ConfirmLegacyDisabled() then return end
+    KongKontinued_InvalidateProfileDialogs()
     if (not KongKontinuedConfig) or (not KongKontinuedConfig:IsVisible()) then
     
         -- Display registered frames

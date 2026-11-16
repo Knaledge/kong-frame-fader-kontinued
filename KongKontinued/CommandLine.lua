@@ -32,7 +32,16 @@ local UNKNOWN_OPTION = "Unknown option: %q (Type |cFF33FF99/kong %s|r for help).
 local PROFILE_NAME_REQUIRED = "Profile name required."
 local NO_SUCH_PROFILE = "Profile %q does not exist. Use |cFF33FF99/kong profile list|r to see a list of available profiles."
 
-local function CanModifyProfiles()
+local profileDialogGeneration = 0
+
+function KongKontinued_InvalidateProfileDialogs()
+	profileDialogGeneration = profileDialogGeneration + 1
+	StaticPopup_Hide("KONGKONTINUED_ADD_PROFILE")
+	StaticPopup_Hide("KONGKONTINUED_COPY_PROFILE")
+	StaticPopup_Hide("KONGKONTINUED_RESET")
+end
+
+function A.CanModifyProfiles()
 	if not KongKontinued_Initialized or InCombatLockdown() then
 		KongKontinued_Warning("Profile changes are unavailable before login or during combat")
 		return false
@@ -53,18 +62,19 @@ function A.NormalizeProfileName(name)
 	return name
 end
 
-local function CurrentProfileTarget()
+function A.CurrentProfileTarget()
 	local name = KongKontinued_Settings.profile
-	return {name = name, profile = KongKontinued_Profiles[name]}
+	return {name = name, profile = KongKontinued_Profiles[name], generation = profileDialogGeneration}
 end
 
-local function IsCurrentTarget(target)
+function A.IsCurrentProfileTarget(target)
 	return type(target) == "table" and target.name == KongKontinued_Settings.profile
 		and target.profile == KongKontinued_Profiles[target.name]
+		and target.generation == profileDialogGeneration
 end
 
 function A.CreateProfile(name)
-	if not CanModifyProfiles() then return end
+	if not A.CanModifyProfiles() then return end
 	local normalized, err = A.NormalizeProfileName(name)
 	if not normalized then KongKontinued_Error("%s", err); return end
 	if KongKontinued_Profiles[normalized] then KongKontinued_Error(PROFILE_ALREADY_EXISTS, normalized); return end
@@ -88,12 +98,13 @@ StaticPopupDialogs.KONGKONTINUED_ADD_PROFILE = {
 	button1 = "Add Profile",
 	button2 = CANCEL,
 	hasEditBox = true,
+	maxLetters = 128,
 	OnShow = function(self)
 		self:GetEditBox():SetText("")
 		UpdateAddProfileInput(self:GetEditBox())
 	end,
 	OnAccept = function(self, target)
-		if not IsCurrentTarget(target) then
+		if not A.IsCurrentProfileTarget(target) then
 			KongKontinued_Warning("Current profile changed; no profile was added")
 			return
 		end
@@ -109,8 +120,9 @@ StaticPopupDialogs.KONGKONTINUED_ADD_PROFILE = {
 }
 
 function A.ShowAddProfile()
-	if not CanModifyProfiles() then return end
-	StaticPopup_Show("KONGKONTINUED_ADD_PROFILE", nil, nil, CurrentProfileTarget())
+	if not A.CanModifyProfiles() then return end
+	KongKontinued_InvalidateProfileDialogs()
+	StaticPopup_Show("KONGKONTINUED_ADD_PROFILE", nil, nil, A.CurrentProfileTarget())
 end
 
 local function CopyProfileData(source)
@@ -132,8 +144,8 @@ StaticPopupDialogs.KONGKONTINUED_COPY_PROFILE = {
 	button1 = "Copy Profile",
 	button2 = CANCEL,
 	OnAccept = function(self, target)
-		if not CanModifyProfiles() then return end
-		if not IsCurrentTarget(target) or KongKontinued_Profiles[target.sourceName] ~= target.source then
+		if not A.CanModifyProfiles() then return end
+		if not A.IsCurrentProfileTarget(target) or KongKontinued_Profiles[target.sourceName] ~= target.source then
 			KongKontinued_Warning("Profiles changed; no configuration was copied")
 			return
 		end
@@ -156,7 +168,7 @@ StaticPopupDialogs.KONGKONTINUED_COPY_PROFILE = {
 }
 
 function A.ShowCopyProfile(sourceName)
-	if not CanModifyProfiles() then return end
+	if not A.CanModifyProfiles() then return end
 	local source = KongKontinued_Profiles[sourceName]
 	if not source or sourceName == KongKontinued_Settings.profile
 		or source == KongKontinued_Profiles[KongKontinued_Settings.profile] then
@@ -165,7 +177,8 @@ function A.ShowCopyProfile(sourceName)
 	end
 	local snapshot, err = CopyProfileData(source)
 	if not snapshot then KongKontinued_Error("%s", err); return end
-	local target = CurrentProfileTarget()
+	KongKontinued_InvalidateProfileDialogs()
+	local target = A.CurrentProfileTarget()
 	target.sourceName, target.source, target.snapshot = sourceName, source, snapshot
 	StaticPopup_Show("KONGKONTINUED_COPY_PROFILE", sourceName, target.name, target)
 end
@@ -185,10 +198,12 @@ function A.ProfileCommandHandler(command, name)
 		return A.CreateProfile(name)
 
 	elseif ( command == "delete" ) then
+		if not A.CanModifyProfiles() then return end
 		if ( name == nil ) then KongKontinued_Error(PROFILE_NAME_REQUIRED) return end
 		if ( name == KongKontinued_Settings.profile ) then KongKontinued_Error(CANNOT_DELETE_CURRENT_PROFILE) return end
 		if ( KongKontinued_Profiles[name] == nil ) then KongKontinued_Error(NO_SUCH_PROFILE, name) return end
 		
+		KongKontinued_InvalidateProfileDialogs()
 		KongKontinued_Profiles[name] = nil
 		KongKontinued_Info(PROFILE_DELETED, name)
 		
@@ -204,6 +219,7 @@ function A.ProfileCommandHandler(command, name)
 		KongKontinued_Info(#names .. " profile(s)")
 		
 	elseif ( command == "load" ) then
+		if not A.CanModifyProfiles() then return end
 		if ( name == nil ) then KongKontinued_Error(PROFILE_NAME_REQUIRED) return end
 		if ( KongKontinued_Profiles[name] == nil ) then KongKontinued_Error(NO_SUCH_PROFILE, name) return end
 		if ( name == KongKontinued_Settings.profile ) then KongKontinued_Error(PROFILE_ALREADY_LOADED, name) return end
@@ -227,16 +243,10 @@ end
 
 
 function A.ResetCommandHandler()
-	if not KongKontinued_Initialized or InCombatLockdown() then
-		KongKontinued_Warning("Profile reset is unavailable before login or during combat")
-		return
-	end
-	if not KongKontinued_ConfirmLegacyDisabled() then return end
+	if not A.CanModifyProfiles() then return end
+	KongKontinued_InvalidateProfileDialogs()
 	local name = KongKontinued_Settings.profile
-	StaticPopup_Show("KONGKONTINUED_RESET", name, nil, {
-		name = name,
-		profile = KongKontinued_Profiles[name],
-	})
+	StaticPopup_Show("KONGKONTINUED_RESET", name, nil, A.CurrentProfileTarget())
 end
 
 
