@@ -101,14 +101,14 @@ CombatWatcher:RegisterEvent("PLAYER_REGEN_DISABLED")
 CombatWatcher:SetScript("OnEvent", function()
     if KongKontinuedConfig and KongKontinuedConfig:IsShown() then
         KongKontinuedConfig:Hide()
-        KongKontinued_Warning("Configuration closed for combat")
+        KongKontinued_Warning("Advanced Config closed for combat")
     end
 end)
 
 function KongKontinuedConfig_Show()
 
     if InCombatLockdown() then
-        KongKontinued_Warning("Configuration cannot be opened during combat")
+        KongKontinued_Warning("Advanced Config cannot be opened during combat")
         return
     end
     if not KongKontinued_ConfirmLegacyDisabled() then return end
@@ -293,7 +293,7 @@ function KongKontinuedConfig_CreateComponents()
     
         -- Create a container frame
         KongKontinuedConfig = AceGUI:Create("Frame")
-        KongKontinuedConfig:SetTitle("Kong Kontinued Configuration")
+        KongKontinuedConfig:SetTitle("Kong Kontinued: Advanced Config")
         KongKontinuedConfig:SetStatusText("Status Bar")
         KongKontinuedConfig:SetLayout("Flow")
         KongKontinuedConfig:SetWidth(264)

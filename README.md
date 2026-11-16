@@ -18,10 +18,29 @@ Copy the `KongKontinued` and `KongKontinuedConfig` directories into Retail's
 selection. Its configuration companion loads on demand. Disable legacy
 `Kong` and `KongConfig` before using this addon.
 
-- `/kong` or `/kongkontinued` opens configuration
+- `/kong` or `/kongkontinued` opens native Options
 - `/kong help` lists commands
 - `/kong profile` lists profile commands
 - `/kong import` opens the legacy import window
+- `/kong advanced` or `/kongkontinued advanced` opens Advanced Config directly
+
+Native Options is also available under Settings > AddOns > Kong Frame
+Fader Kontinued. It provides a character-specific enable checkbox and
+current-profile selector. Profile switching retains the previous profile's
+configured frames, conditions and groups. Selecting defaults does not
+change the selected profile.
+
+**Import Legacy Profiles** opens the existing previewed paste importer.
+**Advanced Config** opens the existing frame picker and rule editor.
+Options closes before either window opens. The configuration companion
+and its AceGUI controls load only when importing or opening Advanced
+Config; native Options works without that companion. Configuration
+changes through Options are unavailable during combat. The configuration
+key binding now opens Options and retains its existing action ID.
+
+KI-6 R01 adds the Options foundation. Import destination/name controls and
+preset checkboxes are planned for subsequent revisions. The new Options
+workflow still requires in-game validation.
 
 Account-wide profiles use `KongKontinued_Profiles`; character selection and
 enabled state use `KongKontinued_Settings`. Both are declared only by the

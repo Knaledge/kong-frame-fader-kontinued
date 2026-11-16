@@ -17,3 +17,4 @@ classes\ObjectPool.lua
 LegacyImport.lua
 KongKontinued.lua
 CommandLine.lua
+Options.lua

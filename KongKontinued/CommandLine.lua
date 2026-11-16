@@ -19,11 +19,11 @@ local ENABLED = "Enabled."
 local ALREADY_ENABLED = "Already enabled."
 local DISABLED = "Disabled."
 local ALREADY_DISABLED = "Already disabled."
-local NO_KONG_CONFIG = "Kong Kontinued Config is either disabled or not installed. Defaulting to command-line interface..."
 local HELP_COMMANDS = "|cFFBBBBFFKong Frame Fader Kontinued|r commands ( |cFF33FF99/kong|r ):"
 local HELP_TOGGLE = "|cFF33FF99enable / disable / toggle|r: enables or disables fading of the user interface."
 local HELP_PROFILE = "|cFF33FF99profile|r: manages saved Kong configurations and allows for configuration sharing between characters."
 local HELP_IMPORT = "|cFF33FF99import|r: previews and imports legacy Kong SavedVariables"
+local HELP_ADVANCED = "|cFF33FF99advanced|r: opens Advanced Config"
 local PROFILE_LOADED = "Profile %q loaded."
 local NOW_USING_PROFILE = "Now using profile %q."
 local PROFILE_ALREADY_EXISTS = "Profile %q already exists."
@@ -90,6 +90,7 @@ function A.ProfileCommandHandler(command, name)
 	else
 		KongKontinued_Error(UNKNOWN_OPTION, command, "profile")
 	end
+	if A.RefreshOptions then A.RefreshOptions() end
 end
 
 
@@ -105,6 +106,7 @@ function KongKontinued_EnableCommandHandler()
 	else
 		KongKontinued_Error(ALREADY_ENABLED)
 	end
+	if A.RefreshOptions then A.RefreshOptions() end
 end
 
 
@@ -115,6 +117,7 @@ function KongKontinued_DisableCommandHandler()
 	else
 		KongKontinued_Error(ALREADY_DISABLED)
 	end
+	if A.RefreshOptions then A.RefreshOptions() end
 end
 
 
@@ -132,32 +135,13 @@ function A.CommandHandler(args)
 	local command = args[1]
 
 	if ( command == nil or command == "" ) then
-		if InCombatLockdown() then
-			KongKontinued_Warning("Configuration cannot be opened during combat")
-			return
-		end
-		if not KongKontinued_ConfirmLegacyDisabled() then return end
-		if ( C_AddOns.LoadAddOn("KongKontinuedConfig") ) then
-			KongKontinuedConfig_Show()
-		else
-			KongKontinued_Warning(NO_KONG_CONFIG)
-			print(HELP_COMMANDS)
-			print(HELP_TOGGLE)
-			print(HELP_PROFILE)
-			print(HELP_IMPORT)
-		end
+		A.ShowOptions()
+	elseif ( command == "advanced" ) then
+		A.ShowAdvancedConfig()
 	elseif ( KongKontinuedConfig and KongKontinuedConfig.frame:IsShown() ) then
-		KongKontinued_Error("The config screen must be closed to issue /kong commands.")
+		KongKontinued_Error("Advanced Config must be closed to issue /kong commands")
 	elseif ( command == "import" ) then
-		if InCombatLockdown() then
-			KongKontinued_Warning("Legacy import cannot be opened during combat")
-		elseif not KongKontinued_ConfirmLegacyDisabled() then
-			return
-		elseif C_AddOns.LoadAddOn("KongKontinuedConfig") then
-			KongKontinuedConfig_ShowLegacyImport()
-		else
-			KongKontinued_Warning(NO_KONG_CONFIG)
-		end
+		A.ShowLegacyImport()
 	elseif ( command == "enable" ) then
 		KongKontinued_EnableCommandHandler()
 	elseif ( command == "disable" ) then
@@ -178,6 +162,7 @@ function A.CommandHandler(args)
 		print(HELP_TOGGLE)
 		print(HELP_PROFILE)
 		print(HELP_IMPORT)
+		print(HELP_ADVANCED)
 	else
 		KongKontinued_Error("%s", '"' .. command .. '"' .. INVALID_COMMAND)
 	end
