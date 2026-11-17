@@ -1,11 +1,12 @@
 -- Keep legacy Kong's live conditions and subscriptions intact during migration.
-local LibUSC = LibStub and LibStub:NewLibrary("KongKontinuedConditions", 9)
+local LibUSC = LibStub and LibStub:NewLibrary("KongKontinuedConditions", 10)
 if not LibUSC then return end -- no upgrade necessary
 
 local pairs = _G.pairs;
 local ipairs = _G.ipairs;
 
 LibUSC.UNAVAILABLE = LibUSC.UNAVAILABLE or {}
+LibUSC.IsForever = WOW_PROJECT_CAMELOT ~= nil and WOW_PROJECT_ID == WOW_PROJECT_CAMELOT
 
 -- Client Interface --------------------------------------------------------------------------------
 function LibUSC:Create(name, ...) 

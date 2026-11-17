@@ -1,4 +1,4 @@
-## Interface: 120105
+## Interface: 120105, 16001
 ## Title: Kong Frame Fader Kontinued
 ## Author: Xentaros
 ## Version: 0.1.0-dev

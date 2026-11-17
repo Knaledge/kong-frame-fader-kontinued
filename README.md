@@ -1,9 +1,10 @@
 # Kong Frame Fader Kontinued
 
-A Retail refresh of Xentaros's Kong / King Kong Frame Fader. This branch
-targets Retail 12.1.5 (Interface 120105). Forever compatibility is outside
-this branch's scope. On Retail 12.1.5, opening configuration and importing
-legacy settings have been user-confirmed working without errors through
+A refresh of Xentaros's Kong / King Kong Frame Fader for Retail 12.1.5
+(Interface 120105), with experimental WoW Forever 1.60.1 support
+(Interface 16001). Forever gameplay validation is pending. On Retail
+12.1.5, opening configuration and importing legacy settings have been
+user-confirmed working without errors through
 KI-5 R20. Static and mocked runtime checks cover additional failure paths;
 broader in-game behavior remains to be validated.
 
@@ -13,10 +14,11 @@ commits contain the refresh. Original author attribution remains intact.
 
 ## Installation and commands
 
-Copy the `KongKontinued` and `KongKontinuedConfig` directories into Retail's
-`Interface/AddOns` directory. Enable Kong Frame Fader Kontinued at character
-selection. Its configuration companion loads on demand. Disable legacy
-`Kong` and `KongConfig` before using this addon.
+Copy the `KongKontinued` and `KongKontinuedConfig` directories into the
+chosen client's `Interface/AddOns` directory. Enable Kong Frame Fader
+Kontinued at character selection. Its configuration companion loads on
+demand. Disable legacy
+`Kong` and `KongConfig`, if installed, before using this addon.
 
 - `/kong` or `/kongkontinued` opens native Options
 - `/kong help` lists commands
@@ -74,6 +76,24 @@ key binding now opens Options and retains its existing action ID.
 KI-6 adds native Options and profile-aware legacy import. Preset checkboxes
 remain planned. The new Options and import workflows still require
 in-game validation.
+
+### Forever compatibility
+
+Forever is identified separately from Retail. It uses modern mount events,
+the shared Macro and NPC-interaction conditions, and Focus for hunter pets.
+Retail-only power selectors and boss, arena and vehicle conditions retain
+their existing client selection; they are not broadly enabled for Forever.
+
+Forever combo-point conditions read points against the current target and
+refresh on target changes and world entry. Maximum points still come from
+the unit's power maximum. Retail retains its existing unit-power queries
+and event subscriptions. No profile format or SavedVariables names change.
+
+Native Options, profile management and on-demand Advanced Config/import
+remain shared. Restricted values still make a condition unavailable rather
+than being treated as an ordinary number or false result. This revision
+does not establish minimap artwork retention or full compatibility with
+every protected frame; those paths require targeted gameplay validation.
 
 Account-wide profiles use `KongKontinued_Profiles`, with old-name lookup
 records in `KongKontinued_ProfileRenames`; character selection and enabled
@@ -166,4 +186,4 @@ Import is unavailable in combat; entering combat closes the window and
 clears the paste. Closing the window also clears it. Original legacy files
 remain untouched. Imported rules can still refer to frames or conditions
 that changed between clients or addon versions, so test those rules in
-Retail before relying on them.
+the destination client before relying on them.
