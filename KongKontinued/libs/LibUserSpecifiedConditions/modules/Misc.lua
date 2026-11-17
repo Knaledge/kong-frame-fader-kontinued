@@ -278,8 +278,8 @@ LibUSC:RegisterParameter("Cursor Is Holding Something", {
 	end,
 })
 
--- Mainline
-if ( WOW_PROJECT_ID == WOW_PROJECT_MAINLINE ) then	
+-- Hunter pets use Focus in Forever as well.
+if ( WOW_PROJECT_ID == WOW_PROJECT_MAINLINE or LibUSC.IsForever ) then
 	LibUSC:RegisterParameter("Focus", { 
 		version = 2,
 		type = "Power",
@@ -287,7 +287,10 @@ if ( WOW_PROJECT_ID == WOW_PROJECT_MAINLINE ) then
 		description = "Power type used by hunters",
 		value = 2,
 	})
+end
 
+-- Mainline
+if ( WOW_PROJECT_ID == WOW_PROJECT_MAINLINE ) then
 	LibUSC:RegisterParameter("Runes", { 
 		version = 2,
 		type = "Power",
@@ -384,8 +387,8 @@ if ( WOW_PROJECT_ID == WOW_PROJECT_MAINLINE ) then
 		value = 18,
 	})
 	
--- Classic
-elseif ( WOW_PROJECT_ID == WOW_PROJECT_CLASSIC ) then	
+-- Forever or Classic
+elseif ( LibUSC.IsForever or WOW_PROJECT_ID == WOW_PROJECT_CLASSIC ) then
 	LibUSC:RegisterParameter("Macro", { 
 		version = 3,
 		type = "Truth",
@@ -412,7 +415,7 @@ elseif ( WOW_PROJECT_ID == WOW_PROJECT_CLASSIC ) then
 		configString = "Macro Condition: {1}",
 		
 		Init = function(self)
-			self:SetParameter(1, LibUSC:Create("User-Entered Text", "[flying]"))
+			self:SetParameter(1, LibUSC:Create("User-Entered Text", LibUSC.IsForever and "[mounted]" or "[flying]"))
 		end,
 		
 		Call = function(self)

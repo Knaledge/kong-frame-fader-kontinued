@@ -3,6 +3,19 @@ if not LibUSC then return end
 
 local CATEGORY = "Unit"
 
+local function RefreshUnitIdentity(self)
+    -- The unit token can stay the same while its occupant changes.
+    self:FireValueChanged()
+end
+
+local function RefreshGroupPet(self, event, owner, prefix)
+    if event == "UNIT_PET" then
+        local index = self:GetParameter(1):GetValue()
+        if index == nil or owner ~= prefix .. index then return end
+    end
+    RefreshUnitIdentity(self)
+end
+
 LibUSC:RegisterParameter("Player", {
     version = 2,
     type = "Unit",
@@ -25,11 +38,15 @@ LibUSC:RegisterParameter("Target", {
 })
 
 LibUSC:RegisterParameter("Pet", {
-    version = 2,
+    version = 3,
     type = "Unit",
     category = CATEGORY,
     description = "The pet of the player-controlled character",
     value = "pet",
+    Events = {"UNIT_PET", "PLAYER_ENTERING_WORLD"},
+    OnEvent = function(self, event, owner)
+        if event ~= "UNIT_PET" or owner == "player" then RefreshUnitIdentity(self) end
+    end,
 })
 
 LibUSC:RegisterParameter("Mouseover Unit", {
@@ -45,7 +62,7 @@ LibUSC:RegisterParameter("Mouseover Unit", {
 })
 
 LibUSC:RegisterParameter("Party Member", {
-    version = 2,
+    version = 3,
     type = "Unit",
     category = CATEGORY,
     description = "The party member at the given index (1-4)",
@@ -53,6 +70,8 @@ LibUSC:RegisterParameter("Party Member", {
         "Number",
     },
     configString = "Party Member: {1}",
+    Events = {"GROUP_ROSTER_UPDATE", "PLAYER_ENTERING_WORLD"},
+    OnEvent = RefreshUnitIdentity,
     
     Call = function(self)
         return "party"..self.Parameters[1]:GetValue()
@@ -67,7 +86,7 @@ LibUSC:RegisterParameter("Party Member", {
 })
 
 LibUSC:RegisterParameter("Pet of Party Member", {
-    version = 2,
+    version = 3,
     type = "Unit",
     category = CATEGORY,
     description = "The pet of the party member at the given index (1-4)",
@@ -75,6 +94,8 @@ LibUSC:RegisterParameter("Pet of Party Member", {
         "Number",
     },
     configString = "Pet of Party Member: {1}",
+    Events = {"GROUP_ROSTER_UPDATE", "UNIT_PET", "PLAYER_ENTERING_WORLD"},
+    OnEvent = function(self, event, owner) RefreshGroupPet(self, event, owner, "party") end,
     
     Call = function(self)
         return "partypet"..self.Parameters[1]:GetValue()
@@ -89,7 +110,7 @@ LibUSC:RegisterParameter("Pet of Party Member", {
 })
 
 LibUSC:RegisterParameter("Raid Member", {
-    version = 2,
+    version = 3,
     type = "Unit",
     category = CATEGORY,
     description = "The raid member at the given index (1-40)",
@@ -97,6 +118,8 @@ LibUSC:RegisterParameter("Raid Member", {
         "Number",
     },
     configString = "Raid Member: {1}",
+    Events = {"GROUP_ROSTER_UPDATE", "PLAYER_ENTERING_WORLD"},
+    OnEvent = RefreshUnitIdentity,
     
     Call = function(self)
         return "raid"..self.Parameters[1]:GetValue()
@@ -111,7 +134,7 @@ LibUSC:RegisterParameter("Raid Member", {
 })
 
 LibUSC:RegisterParameter("Pet of Raid Member", {
-    version = 2,
+    version = 3,
     type = "Unit",
     category = CATEGORY,
     description = "The pet of the raid member at the given index (1-40)",
@@ -119,6 +142,8 @@ LibUSC:RegisterParameter("Pet of Raid Member", {
         "Number",
     },
     configString = "Pet of Raid Member: {1}",
+    Events = {"GROUP_ROSTER_UPDATE", "UNIT_PET", "PLAYER_ENTERING_WORLD"},
+    OnEvent = function(self, event, owner) RefreshGroupPet(self, event, owner, "raid") end,
     
     Call = function(self)
         return "raidpet"..self.Parameters[1]:GetValue()
@@ -242,11 +267,11 @@ LibUSC:RegisterParameter("Unit is Casting", {
 })
 
 LibUSC:RegisterParameter("Unit is Mounted", { 
-    version = 3,
+    version = 4,
     type = "Truth",
     category = CATEGORY,
     description = "True when the player-controlled character is mounted",
-    Events = WOW_PROJECT_ID == WOW_PROJECT_MAINLINE and {
+    Events = (WOW_PROJECT_ID == WOW_PROJECT_MAINLINE or LibUSC.IsForever) and {
         "PLAYER_MOUNT_DISPLAY_CHANGED",
         "PLAYER_ENTERING_WORLD",
     } or {
@@ -482,7 +507,7 @@ local POWER_NAMES = {
 "HOLY_POWER",
 }
 
-if WOW_PROJECT_ID == WOW_PROJECT_MAINLINE then
+if WOW_PROJECT_ID == WOW_PROJECT_MAINLINE or LibUSC.IsForever then
     POWER_NAMES[4] = "COMBO_POINTS"
     POWER_NAMES[8] = "LUNAR_POWER"
     POWER_NAMES[10] = "ALTERNATE"
@@ -495,7 +520,27 @@ if WOW_PROJECT_ID == WOW_PROJECT_MAINLINE then
     POWER_NAMES[19] = "ESSENCE"
 end
 
+local function GetCurrentUnitPower(unit, power)
+    -- Forever's combo points belong to the current target, unlike Retail's.
+    if LibUSC.IsForever and power == 4 then return GetComboPoints(unit, "target") end
+    return UnitPower(unit, power)
+end
+
+local function GetPowerEvents(...)
+    local events = {...}
+    if LibUSC.IsForever then
+        events[#events + 1] = "PLAYER_TARGET_CHANGED"
+        events[#events + 1] = "PLAYER_ENTERING_WORLD"
+    end
+    return events
+end
+
 local function OnUnitPowerEvent(self, event, unit, power)
+    if event == "PLAYER_ENTERING_WORLD" then self:SetValue(); return end
+    if event == "PLAYER_TARGET_CHANGED" then
+        if self:GetParameter(1):GetValue() == 4 then self:SetValue() end
+        return
+    end
     if unit ~= self:GetParameter(2):GetValue() then return end
     local expectedPower = POWER_NAMES[self:GetParameter(1):GetValue()]
     -- Unknown power types still refresh on this unit's power events.
@@ -505,11 +550,11 @@ local function OnUnitPowerEvent(self, event, unit, power)
 end
 
 LibUSC:RegisterParameter("Unit Power", { 
-    version = 4,
+    version = 5,
     type = "Number",
     category = CATEGORY,
     description = "The current power level (mana, rage, etc.) of a given unit",
-    Events = {"UNIT_POWER_UPDATE"},
+    Events = GetPowerEvents("UNIT_POWER_UPDATE"),
     ParameterTypes = {
         "Power",
         "Unit",
@@ -517,18 +562,18 @@ LibUSC:RegisterParameter("Unit Power", {
     configString = "{1} of {2}",
     
     Call = function(self)
-        return UnitPower(self.Parameters[2]:GetValue(), self.Parameters[1]:GetValue())
+        return GetCurrentUnitPower(self.Parameters[2]:GetValue(), self.Parameters[1]:GetValue())
     end,
     
     OnEvent = OnUnitPowerEvent,
 })
 
 LibUSC:RegisterParameter("Unit Power Maximum", { 
-    version = 4,
+    version = 5,
     type = "Number",
     category = CATEGORY,
     description = "The maximum power level (mana, rage, etc.) of a given unit",
-    Events = {"UNIT_MAXPOWER"},
+    Events = GetPowerEvents("UNIT_MAXPOWER"),
     ParameterTypes = {
         "Power",
         "Unit",
@@ -543,11 +588,11 @@ LibUSC:RegisterParameter("Unit Power Maximum", {
 })
 
 LibUSC:RegisterParameter("Unit Power (Percent)", { 
-    version = 5,
+    version = 6,
     type = "Number",
     category = CATEGORY,
     description = "The current percent power (mana, rage, etc.) of a given unit",
-    Events = {"UNIT_POWER_UPDATE", "UNIT_MAXPOWER"},
+    Events = GetPowerEvents("UNIT_POWER_UPDATE", "UNIT_MAXPOWER"),
     ParameterTypes = {
         "Power",
         "Unit",
@@ -557,14 +602,14 @@ LibUSC:RegisterParameter("Unit Power (Percent)", {
     Call = function(self)
         local power = self.Parameters[1]:GetValue()
         local unit = self.Parameters[2]:GetValue()
-        return GetUnitFraction(UnitPower(unit, power), UnitPowerMax(unit, power)) or 0
+        return GetUnitFraction(GetCurrentUnitPower(unit, power), UnitPowerMax(unit, power)) or 0
     end,
     
     OnEvent = OnUnitPowerEvent,
 })
 
 LibUSC:RegisterParameter("Unit Power is Low", { 
-    version = 3,
+    version = 4,
     type = "Truth",
     category = CATEGORY,
     configString = "{1} of {2} below {3}%",
@@ -574,7 +619,7 @@ LibUSC:RegisterParameter("Unit Power is Low", {
         "Unit",
         "Number",
     },
-    Events = {"UNIT_POWER_UPDATE", "UNIT_MAXPOWER"},
+    Events = GetPowerEvents("UNIT_POWER_UPDATE", "UNIT_MAXPOWER"),
     
     Init = function(self)
         self:SetParameter(3, LibUSC:Create("User-Entered Number", 100))
@@ -584,7 +629,7 @@ LibUSC:RegisterParameter("Unit Power is Low", {
         local power = self:GetParameter(1):GetValue()
         local unit = self:GetParameter(2):GetValue()
         local percent = self:GetParameter(3):GetValue()
-        local fraction = GetUnitFraction(UnitPower(unit, power), UnitPowerMax(unit, power))
+        local fraction = GetUnitFraction(GetCurrentUnitPower(unit, power), UnitPowerMax(unit, power))
         if fraction == LibUSC.UNAVAILABLE then return fraction end
         return fraction ~= nil and fraction < percent/100
     end,
@@ -826,8 +871,8 @@ if ( WOW_PROJECT_ID == WOW_PROJECT_MAINLINE or WOW_PROJECT_ID == WOW_PROJECT_BUR
 	})
 end
 
--- Classic or Burning Crusade Classic
-if ( WOW_PROJECT_ID == WOW_PROJECT_CLASSIC or WOW_PROJECT_ID == WOW_PROJECT_BURNING_CRUSADE_CLASSIC ) then
+-- Forever, Classic or Burning Crusade Classic
+if ( LibUSC.IsForever or WOW_PROJECT_ID == WOW_PROJECT_CLASSIC or WOW_PROJECT_ID == WOW_PROJECT_BURNING_CRUSADE_CLASSIC ) then
 	LibUSC:RegisterParameter("Player is Interacting with NPC", {
 		type = "Truth",
 		category = CATEGORY,

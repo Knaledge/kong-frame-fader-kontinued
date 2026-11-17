@@ -1,22 +1,45 @@
 # Kong Frame Fader Kontinued
 
-A Retail refresh of Xentaros's Kong / King Kong Frame Fader. This branch
-targets Retail 12.1.5 (Interface 120105). Forever compatibility is outside
-this branch's scope. On Retail 12.1.5, opening configuration and importing
-legacy settings have been user-confirmed working without errors through
-KI-5 R20. Static and mocked runtime checks cover additional failure paths;
-broader in-game behavior remains to be validated.
+Kong Frame Fader Kontinued lets you fade World of Warcraft UI elements
+based on conditions you choose. Keep frames out of the way until you need
+them, reveal them on mouseover, and customize their opacity and fade timing.
 
-The original source archive is [Kong 0.29 on CurseForge](https://www.curseforge.com/wow/addons/kingkongframefader/files/7534093).
-The initial repository seed preserves that archive's contents; subsequent
-commits contain the refresh. Original author attribution remains intact.
+It continues Xentaros's Kong / King Kong Frame Fader, with support for
+Retail 12.1.5 and WoW Forever 1.60.1.
 
-## Installation and commands
+## Features
 
-Copy the `KongKontinued` and `KongKontinuedConfig` directories into Retail's
-`Interface/AddOns` directory. Enable Kong Frame Fader Kontinued at character
-selection. Its configuration companion loads on demand. Disable legacy
-`Kong` and `KongConfig` before using this addon.
+- Select UI frames with an in-game frame picker
+- Set fade-in and fade-out opacity, timing and fade-out delay
+- Reveal frames on mouseover or when configured conditions are met
+- Group frames to coordinate their visibility
+- Manage shared profiles through native WoW Options
+- Import profiles from legacy Kong without running the old addon
+
+## Installation
+
+Copy the `KongKontinued` and `KongKontinuedConfig` directories into the
+chosen client's `Interface/AddOns` directory. Enable Kong Frame Fader
+Kontinued at character selection. Its configuration companion loads on
+demand. Disable legacy `Kong` and `KongConfig`, if installed, before using
+this addon.
+
+## Getting started
+
+Open **Settings > AddOns > Kong Frame Fader Kontinued**, or use `/kong`.
+Enable the addon for your character and select or create a profile.
+
+Choose **Advanced Config** to open the frame picker and rule editor.
+Select a frame, enable **Hide Selected Frame(s)**, then adjust its fade
+settings and **Show When** conditions. Use groups when several frames
+should respond together.
+
+The configuration companion loads only when opening Advanced Config or
+importing profiles. Native Options provides profile controls without
+loading the editor. Configuration changes through Options are unavailable
+during combat.
+
+## Commands
 
 - `/kong` or `/kongkontinued` opens native Options
 - `/kong help` lists commands
@@ -24,12 +47,16 @@ selection. Its configuration companion loads on demand. Disable legacy
 - `/kong import` opens the legacy import window
 - `/kong advanced` or `/kongkontinued advanced` opens Advanced Config directly
 
-Native Options is also available under Settings > AddOns > Kong Frame
-Fader Kontinued. It provides a character-specific enable checkbox and
-current-profile selector. Profile switching retains the previous profile's
-configured frames, conditions and groups. Blizzard's shared Defaults
-button is hidden for this category, and its default-setting operations do
-not change Kong's controls.
+Key bindings are listed under **Kong Frame Fader Kontinued**. The
+configuration binding opens Options. Legacy Kong bindings must be
+reassigned to Kontinued.
+
+## Profiles
+
+Profiles contain configured frames, fade settings, conditions and groups.
+They are shared across characters; each character chooses its own profile
+and enabled state. Switching profiles retains the previous profile's
+configuration.
 
 **Add Profile** asks for a new name, creates an empty profile and selects
 it. Names are trimmed, lowercased and have whitespace replaced by
@@ -40,53 +67,27 @@ uses the same creation path.
 **Copy from** lists other profiles. Selecting a source asks for
 confirmation naming both profiles before replacing the selected profile's
 configuration. The destination keeps its name and this character's enabled
-state. The copy includes frames, fade settings, conditions and groups;
-it shares no configuration tables with the source. Runtime references
-are excluded, and the source remains unchanged. Characters sharing the
-destination profile are affected. Combat or changed profiles invalidate
-confirmation. Cancelling changes nothing.
-
-Pending Add, Copy and Reset dialogs close when Advanced Config or legacy
-import is opened, profiles are changed or combat begins. Old confirmations
-cannot be reused after returning to the same profile. Profile-changing
-commands enforce the same combat, legacy-addon and open-editor checks as
-the Options UI. Copy from refreshes its enabled state as profiles are added
-or deleted.
+state. The copy is independent of the source, which remains unchanged.
+Other characters using the destination profile receive the copied settings.
 
 **Reset Profile** asks for confirmation naming the selected profile, then
 permanently clears all of its frames, fade settings, conditions and groups.
 The profile keeps its name, and this character's enabled state stays the
 same. Profiles are shared across characters, so this also clears the
 configuration used by any other characters selecting that profile. Other
-profiles and WoW settings are untouched. Cancelling changes nothing.
-`/kong reset` and `/kong profile reset` use the same confirmation. A reset
-is rejected if combat begins or the selected profile changes before
-confirmation.
+profiles and WoW settings are untouched. `/kong reset` and
+`/kong profile reset` use the same confirmation.
 
-**Import Legacy Profiles** opens the existing previewed paste importer.
-**Advanced Config** opens the existing frame picker and rule editor.
-Options closes before either window opens. The configuration companion
-and its AceGUI controls load only when importing or opening Advanced
-Config; native Options works without that companion. Configuration
-changes through Options are unavailable during combat. The configuration
-key binding now opens Options and retains its existing action ID.
+Cancelling a confirmation leaves the profile unchanged. Pending profile
+dialogs close when profiles change, an editor opens or combat begins.
 
-KI-6 adds native Options and profile-aware legacy import. Preset checkboxes
-remain planned. The new Options and import workflows still require
-in-game validation.
-
-Account-wide profiles use `KongKontinued_Profiles`, with old-name lookup
-records in `KongKontinued_ProfileRenames`; character selection and enabled
-state use `KongKontinued_Settings`. These are declared only by the new main
-addon. Legacy `Kong_Profiles` and `Kong_Settings` are neither loaded
-nor written by Kontinued. Key bindings appear under Kong Frame Fader
-Kontinued. Legacy Kong assignments use different action IDs and must be
-reassigned there; Kontinued does not automatically rewrite saved bindings.
+**Import Legacy Profiles** opens the importer described below.
 
 ## Importing legacy Kong settings
 
-The game cannot read arbitrary files through an addon. Import therefore
-uses pasted SavedVariables data and does not require legacy Kong to run.
+Import uses pasted SavedVariables data and does not require legacy Kong
+to run. Kontinued keeps its settings separate and leaves legacy files
+untouched.
 
 If the known `Kong` or `KongConfig` addons are enabled for any character or
 still loaded, opening configuration or `/kongkontinued import` first offers
@@ -116,7 +117,7 @@ addon IDs must be disabled manually.
 
 Import actions:
 
-- **Copy all profiles (preserve existing)** keeps the original safe bulk workflow
+- **Copy all profiles (preserve existing)** imports every incoming profile without overwriting existing data
 - **Import into current profile** replaces its complete configuration under its existing name
 - **Rename current profile and import** replaces its configuration under a chosen new name
 - **Import selected as separate profile** copies one incoming profile without overwriting existing data
@@ -148,22 +149,36 @@ require another preview. Closing the importer or entering combat clears
 the paste and dismisses replacement confirmation. All input profiles are
 validated before any writes, even when selecting only one to import.
 
-Rename records use a new SavedVariables declaration. Verify persistence
-across reload/relog and follow-up character loads before relying on a
-shared-profile rename. To roll back to an older version without rename
-support after testing, rename disposable test profiles back and select
-their canonical names on the test characters before reverting the code.
-
-The importer accepts literal Lua SavedVariables data up to 4 MiB, validates
-all profiles before copying, and rejects executable expressions, unknown
-condition types and unsupported settings. It supports the Kong 0.29
-profile structure and older flat character settings containing `Frames`.
-It retains configured fades, conditions and frame groups, while dropping
-runtime caches and resetting hover counts. Saved frame paths support
-global/table fields and `:GetParent()` traversal without compiling Lua.
+The importer accepts legacy SavedVariables data up to 4 MiB. It supports
+Kong 0.29 profiles and older flat character settings, retaining configured
+fades, conditions and frame groups. Executable code, unknown condition
+types and unsupported settings are rejected.
 
 Import is unavailable in combat; entering combat closes the window and
 clears the paste. Closing the window also clears it. Original legacy files
 remain untouched. Imported rules can still refer to frames or conditions
 that changed between clients or addon versions, so test those rules in
-Retail before relying on them.
+the destination client before relying on them.
+
+## Compatibility
+
+| Client | Version | Interface |
+|---|---|---|
+| Retail | 12.1.5 | 120105 |
+| WoW Forever | 1.60.1 | 16001 |
+
+Available conditions depend on the client. Forever supports mount, Macro
+and NPC-interaction conditions, hunter-pet Focus and target-based combo
+points. Retail-only power selectors and boss, arena and vehicle conditions
+are not exposed on Forever.
+
+When the client restricts a value needed by a condition, that condition
+becomes unavailable and keeps the frame visible. Protected frames and
+minimap artwork can behave differently from ordinary UI elements; check
+the frames you configure during normal gameplay, including combat.
+
+## Credits
+
+Based on Xentaros's
+[Kong / King Kong Frame Fader 0.29](https://www.curseforge.com/wow/addons/kingkongframefader/files/7534093).
+Original author attribution is retained in the source.
