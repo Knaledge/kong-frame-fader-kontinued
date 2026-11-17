@@ -1,5 +1,5 @@
 -- Keep legacy Kong's live conditions and subscriptions intact during migration.
-local LibUSC = LibStub and LibStub:NewLibrary("KongKontinuedConditions", 10)
+local LibUSC = LibStub and LibStub:NewLibrary("KongKontinuedConditions", 11)
 if not LibUSC then return end -- no upgrade necessary
 
 local pairs = _G.pairs;
@@ -353,14 +353,16 @@ function LibUSC.BaseParameter:OnUpdate(elapsed)
 end
 
 function LibUSC.BaseParameter:Clone()
-    local clonedParams = {}
+    local clone = {name = self.name, Parameters = {}}
     for i, Param in ipairs(self.Parameters) do
-        tinsert(clonedParams, Param:Clone())
+        clone.Parameters[i] = Param:Clone()
     end
     if self.isUserEntered then
-        tinsert(clonedParams, self.value)
+        clone.value = self.value
     end
-    return LibUSC:Create(self.name, unpack(clonedParams))
+    -- Inflate configured data without rerunning new-condition defaults.
+    LibUSC:Inflate(clone)
+    return clone
 end
 
 -- Condition API -----------------------------------------------------------------------------------

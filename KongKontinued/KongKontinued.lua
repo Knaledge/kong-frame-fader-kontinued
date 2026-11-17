@@ -11,6 +11,7 @@ local R = A.CLASSES -- Class (R)epository
 local DUMMY_FRAME = CreateFrame("frame") -- used for references to avoid abundant rawget calls when dealing with dummy functions
 local FADER = R.Fader.construct()
 local HiddenFrames, PendingVisibility, PendingRestores = {}, {}, {}
+local ConditionStates = setmetatable({}, {__mode = "k"})
 
 local function SetFrameShown(region, shown)
 	if not R.Fader.canAccess(FADER, region) then
@@ -600,7 +601,11 @@ function KongKontinued_UnregisterFrame(region)
 end
 
 function A.OnConditionStateChange(region, trigger)
-	if ( trigger.Condition:IsMet() ) then
+	-- A rule owns one contribution; mouseover and groups may own others.
+	local active = not not trigger.Condition:IsMet()
+	if active == (ConditionStates[trigger] or false) then return end
+	ConditionStates[trigger] = active
+	if active then
 		A.FadeIn(region, trigger)
 	else
 		A.FadeOut(region, trigger)
@@ -612,14 +617,14 @@ function KongKontinued_AddTrigger(region, condition)
 	trigger.Condition = condition
 	trigger.Condition:AddListener(A.OnConditionStateChange, region, trigger)
 	table.insert(KongKontinued_Frames[region], trigger)
-	if ( trigger.Condition:IsMet() ) then
-		A.FadeIn(region, trigger)
-	end
+	A.OnConditionStateChange(region, trigger)
 	return trigger
 end
 
 function KongKontinued_RemoveTrigger(region, trigger)
-	if ( trigger.Condition:IsMet() ) then
+	local active = ConditionStates[trigger]
+	ConditionStates[trigger] = nil
+	if active then
 		A.FadeOut(region, trigger)
 	end
 	trigger.Condition:RemoveListener(A.OnConditionStateChange)
@@ -750,6 +755,7 @@ function A.LoadFrames()
 			for i, trigger in ipairs(setting) do
 				setmetatable(trigger, {__index = setting.TriggerDefaults})
 				trigger.refs = 0
+				ConditionStates[trigger] = nil
 				LibUSC:Inflate(trigger.Condition)
 				trigger.Condition:AddListener(A.OnConditionStateChange, region, trigger)
 				
@@ -763,9 +769,7 @@ function A.LoadFrames()
 			end
 			
 			for i, trigger in ipairs(setting) do
-				if ( trigger.Condition:IsMet() ) then
-					A.FadeIn(region, trigger)
-				end
+				A.OnConditionStateChange(region, trigger)
 			end
 			
 			for name, group in pairs(KongKontinued_Settings.Groups) do
@@ -786,6 +790,7 @@ function KongKontinued_Unload()
 		RestoreFrame(region)
 		
 		for i, trigger in ipairs(settings) do
+			ConditionStates[trigger] = nil
 			trigger.refs = nil
 			trigger.lastFadeTime = nil
 			trigger.Condition:RemoveListener(A.OnConditionStateChange)
@@ -803,9 +808,16 @@ function KongKontinued_Unload()
 	end
 	
 	for name, group in pairs(KongKontinued_Settings.Groups or {}) do
+		local removedTemporary
 		for index in pairs(group) do
-			group[index] = 0
+			if type(index) == "table" then
+				group[index] = nil
+				removedTemporary = true
+			else
+				group[index] = 0
+			end
 		end
+		if removedTemporary and not next(group) then KongKontinued_Settings.Groups[name] = nil end
 	end
 	
 	KongKontinued_Frames = {}

@@ -3,6 +3,19 @@ if not LibUSC then return end
 
 local CATEGORY = "Unit"
 
+local function RefreshUnitIdentity(self)
+    -- The unit token can stay the same while its occupant changes.
+    self:FireValueChanged()
+end
+
+local function RefreshGroupPet(self, event, owner, prefix)
+    if event == "UNIT_PET" then
+        local index = self:GetParameter(1):GetValue()
+        if index == nil or owner ~= prefix .. index then return end
+    end
+    RefreshUnitIdentity(self)
+end
+
 LibUSC:RegisterParameter("Player", {
     version = 2,
     type = "Unit",
@@ -25,11 +38,15 @@ LibUSC:RegisterParameter("Target", {
 })
 
 LibUSC:RegisterParameter("Pet", {
-    version = 2,
+    version = 3,
     type = "Unit",
     category = CATEGORY,
     description = "The pet of the player-controlled character",
     value = "pet",
+    Events = {"UNIT_PET", "PLAYER_ENTERING_WORLD"},
+    OnEvent = function(self, event, owner)
+        if event ~= "UNIT_PET" or owner == "player" then RefreshUnitIdentity(self) end
+    end,
 })
 
 LibUSC:RegisterParameter("Mouseover Unit", {
@@ -45,7 +62,7 @@ LibUSC:RegisterParameter("Mouseover Unit", {
 })
 
 LibUSC:RegisterParameter("Party Member", {
-    version = 2,
+    version = 3,
     type = "Unit",
     category = CATEGORY,
     description = "The party member at the given index (1-4)",
@@ -53,6 +70,8 @@ LibUSC:RegisterParameter("Party Member", {
         "Number",
     },
     configString = "Party Member: {1}",
+    Events = {"GROUP_ROSTER_UPDATE", "PLAYER_ENTERING_WORLD"},
+    OnEvent = RefreshUnitIdentity,
     
     Call = function(self)
         return "party"..self.Parameters[1]:GetValue()
@@ -67,7 +86,7 @@ LibUSC:RegisterParameter("Party Member", {
 })
 
 LibUSC:RegisterParameter("Pet of Party Member", {
-    version = 2,
+    version = 3,
     type = "Unit",
     category = CATEGORY,
     description = "The pet of the party member at the given index (1-4)",
@@ -75,6 +94,8 @@ LibUSC:RegisterParameter("Pet of Party Member", {
         "Number",
     },
     configString = "Pet of Party Member: {1}",
+    Events = {"GROUP_ROSTER_UPDATE", "UNIT_PET", "PLAYER_ENTERING_WORLD"},
+    OnEvent = function(self, event, owner) RefreshGroupPet(self, event, owner, "party") end,
     
     Call = function(self)
         return "partypet"..self.Parameters[1]:GetValue()
@@ -89,7 +110,7 @@ LibUSC:RegisterParameter("Pet of Party Member", {
 })
 
 LibUSC:RegisterParameter("Raid Member", {
-    version = 2,
+    version = 3,
     type = "Unit",
     category = CATEGORY,
     description = "The raid member at the given index (1-40)",
@@ -97,6 +118,8 @@ LibUSC:RegisterParameter("Raid Member", {
         "Number",
     },
     configString = "Raid Member: {1}",
+    Events = {"GROUP_ROSTER_UPDATE", "PLAYER_ENTERING_WORLD"},
+    OnEvent = RefreshUnitIdentity,
     
     Call = function(self)
         return "raid"..self.Parameters[1]:GetValue()
@@ -111,7 +134,7 @@ LibUSC:RegisterParameter("Raid Member", {
 })
 
 LibUSC:RegisterParameter("Pet of Raid Member", {
-    version = 2,
+    version = 3,
     type = "Unit",
     category = CATEGORY,
     description = "The pet of the raid member at the given index (1-40)",
@@ -119,6 +142,8 @@ LibUSC:RegisterParameter("Pet of Raid Member", {
         "Number",
     },
     configString = "Pet of Raid Member: {1}",
+    Events = {"GROUP_ROSTER_UPDATE", "UNIT_PET", "PLAYER_ENTERING_WORLD"},
+    OnEvent = function(self, event, owner) RefreshGroupPet(self, event, owner, "raid") end,
     
     Call = function(self)
         return "raidpet"..self.Parameters[1]:GetValue()
