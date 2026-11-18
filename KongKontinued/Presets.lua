@@ -2,6 +2,7 @@ local _, A = ...
 
 local RESET_DIALOG = "KONGKONTINUED_RESET_PRESETS"
 local sliderLabels = {"Idle", "Mouseover", "Combat"}
+local sliderTop, entryTop = 53, 87
 local nativeBars = {
     {"MainActionBar", "Action Bar 1"},
     {"MultiBarBottomLeft", "Action Bar 2", "MultiBar1_IsVisible"},
@@ -293,7 +294,7 @@ local function CreateSection(section)
     end
     section.status = CreateLabel(frame, "", "GameFontHighlightSmall")
     section.status:SetTextColor(.65, .65, .65)
-    section.status:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -77)
+    section.status:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -entryTop)
 end
 
 function A.RefreshPresetOptions()
@@ -304,7 +305,7 @@ function A.RefreshPresetOptions()
     local locked = InCombatLockdown()
     local usable = KongKontinued_Initialized and not locked
     local _, introHeight = intro:GetSize()
-    local y = math.max(introHeight, 16) + 16
+    local y = math.max(introHeight, 16) + 26
     for _, section in ipairs(sections) do
         if not locked then section.entries = FindEntries(section) end
         local entries = section.entries or {}
@@ -340,7 +341,7 @@ function A.RefreshPresetOptions()
                 row.entry = entry
                 row:ClearAllPoints()
                 row:SetPoint("TOPLEFT", section.frame, "TOPLEFT",
-                    ((i - 1) % columnCount) * (rowWidth + 12), -77 - math.floor((i - 1) / columnCount) * 33)
+                    ((i - 1) % columnCount) * (rowWidth + 12), -entryTop - math.floor((i - 1) / columnCount) * 33)
                 row:SetWidth(rowWidth)
                 row.label:SetText(entry.title:gsub("|", "||"))
                 row.status:SetWidth(rowWidth - 32)
@@ -367,19 +368,19 @@ function A.RefreshPresetOptions()
             slider.label:SetText(display and (sliderLabels[i] .. "  " .. display) or sliderLabels[i])
             slider:SetWidth(sliderWidth)
             slider:ClearAllPoints()
-            slider:SetPoint("TOPLEFT", section.frame, "TOPLEFT", (i - 1) * (sliderWidth + 16), -48)
+            slider:SetPoint("TOPLEFT", section.frame, "TOPLEFT", (i - 1) * (sliderWidth + 16), -sliderTop)
             slider:SetValue(value and value * 100 or 0)
             slider:SetEnabled(usable and enabled > 0)
             slider.label:SetAlpha(usable and enabled > 0 and 1 or .5)
         end
-        local height = 80
+        local height = entryTop + 3
         if section.group then height = height + math.ceil(#entries / columnCount) * 33
         elseif section.status:GetText() ~= "" then height = height + 14 end
         section.frame:ClearAllPoints()
         section.frame:SetPoint("TOPLEFT", body, "TOPLEFT", 12, -y)
         section.frame:SetWidth(width)
         section.frame:SetHeight(height)
-        y = y + height + 12
+        y = y + height + 26
     end
     body:SetHeight(y)
     refreshing = false

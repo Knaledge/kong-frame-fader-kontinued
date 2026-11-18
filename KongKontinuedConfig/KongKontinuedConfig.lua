@@ -176,7 +176,9 @@ function KongKontinuedConfig_Show(region)
     
     -- Update the config widgets' states
     KongKontinuedConfig_UpdateComponents()
-    if region then KongKontinuedConfig_AutoExpandAndCollapse() end
+    if region then
+        KongKontinuedConfig_AutoExpandAndCollapse(next(KongKontinuedConfig_SelectedFrames) ~= nil)
+    end
     
 end
 
@@ -772,7 +774,7 @@ function KongKontinuedConfig_CoverButton_OnClick(self, button)
 end
 
 -- GUI Update --------------------------------------------------------------------------------------
-function KongKontinuedConfig_AutoExpandAndCollapse()
+function KongKontinuedConfig_AutoExpandAndCollapse(expandAdvanced)
 
     KongKontinuedConfig_ConditionsCategoryGroup:SetCollapsed(KongKontinuedConfig_FadeCheckBox:GetValue() == false)
 
@@ -786,7 +788,7 @@ function KongKontinuedConfig_AutoExpandAndCollapse()
             end
         end
     end
-    if hasAdvancedSettings then
+    if expandAdvanced or hasAdvancedSettings then
         KongKontinuedConfig_AdvancedGroup:SetCollapsed(false)
     end
 end
