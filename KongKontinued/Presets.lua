@@ -219,6 +219,33 @@ local function CreateCheckbox(parent, onClick)
     return checkbox
 end
 
+local function ShowUnavailableTooltip(frame)
+    if not frame.reason then return end
+    GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
+    GameTooltip:SetText("Minimap preset unavailable")
+    GameTooltip:AddLine(frame.reason, 1, 1, 1, true)
+    if frame.source then GameTooltip:AddLine("Likely source: " .. frame.source, .75, .75, .75, true) end
+    GameTooltip:Show()
+end
+
+local function HideUnavailableTooltip(frame)
+    if GameTooltip:IsOwned(frame) then GameTooltip:Hide() end
+end
+
+local function CreateUnavailableTooltip(section)
+    local frame = CreateFrame("Frame", nil, section.frame)
+    frame:SetPoint("TOPLEFT", section.check, "TOPLEFT")
+    frame:SetPoint("BOTTOMLEFT", section.check, "BOTTOMLEFT")
+    frame:SetPoint("RIGHT", section.checkLabel, "RIGHT", 2, 0)
+    frame:SetFrameLevel(section.check:GetFrameLevel() + 1)
+    frame:EnableMouse(true)
+    frame:SetScript("OnEnter", ShowUnavailableTooltip)
+    frame:SetScript("OnLeave", HideUnavailableTooltip)
+    frame:SetScript("OnHide", HideUnavailableTooltip)
+    frame:Hide()
+    return frame
+end
+
 local function CreateFrameRow(section)
     local row = CreateFrame("Frame", nil, section.frame)
     row:SetHeight(33)
@@ -268,6 +295,7 @@ local function CreateSection(section)
         A.RefreshPresetOptions()
     end)
     section.check:SetPoint("RIGHT", section.checkLabel, "LEFT", -1, 0)
+    if section.global == "Minimap" then section.unavailableTooltip = CreateUnavailableTooltip(section) end
     section.mixed = section.check:CreateTexture(nil, "OVERLAY")
     section.mixed:SetColorTexture(.82, .82, .82, 1)
     section.mixed:SetSize(10, 2)
@@ -314,11 +342,12 @@ function A.RefreshPresetOptions()
         local sliderWidth = (width - 32) / 3
         local enabled, eligible, resettable = 0, 0, 0
         local values, mixed = {}, {}
+        local unavailableReason, likelySource
         section.status:SetText("")
         if not section.group then section.config:SetEnabled(false) end
         for i, entry in ipairs(entries) do
             local state, setting = GetState(entry)
-            if state == "on" or state == "off" or state == "suspended" then eligible = eligible + 1 end
+            if state == "on" or state == "off" then eligible = eligible + 1 end
             local canReset = setting and setting.preset and (state == "on" or state == "advanced")
             if canReset then resettable = resettable + 1 end
             if state == "on" then
@@ -355,11 +384,31 @@ function A.RefreshPresetOptions()
                 section.status:SetText(status)
                 section.config:SetEnabled(configurable)
                 section.check:SetChecked(state == "on" or state == "advanced" or state == "suspended")
+                if section.unavailableTooltip then
+                    if state == "unavailable" or state == "suspended" then
+                        unavailableReason, likelySource = A.MinimapPreset.GetUnavailableReason()
+                        unavailableReason = unavailableReason or "The minimap frame configuration is unavailable"
+                    elseif state == "advanced" then
+                        unavailableReason = "An advanced Kong configuration is applied to the minimap"
+                    end
+                end
             end
         end
         if section.group then section.check:SetChecked(eligible > 0 and enabled == eligible) end
         section.mixed:SetShown(section.group and enabled > 0 and enabled < eligible)
-        section.check:SetEnabled(usable and eligible > 0)
+        local canToggle = usable and eligible > 0
+        section.check:SetEnabled(canToggle)
+        local tooltip = section.unavailableTooltip
+        if tooltip then
+            section.check:SetAlpha(canToggle and 1 or .55)
+            section.checkLabel:SetAlpha(canToggle and 1 or .55)
+            tooltip.reason = not canToggle and (unavailableReason
+                or (locked and "Preset settings are unavailable during combat")
+                or "The minimap frame is unavailable") or nil
+            tooltip.source = not canToggle and likelySource or nil
+            tooltip:SetShown(tooltip.reason ~= nil)
+            if tooltip.reason and GameTooltip:IsOwned(tooltip) then ShowUnavailableTooltip(tooltip) end
+        end
         section.reset:SetEnabled(usable and resettable > 0)
         for i = #entries + 1, #section.rows do section.rows[i]:Hide() end
         for i, slider in ipairs(section.sliders) do
