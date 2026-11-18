@@ -4,6 +4,7 @@ A.MinimapPreset = Preset
 
 local roundMask = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local maskPattern = "Interface\\AddOns\\" .. N .. "\\Textures\\PresetMinimap\\%03d.tga"
+local transparencyConflict = "Another addon may be controlling minimap transparency"
 local proxy, owner, priorMask, appliedPercent, failed, restoring
 local watchedMap, maskHooked, writingMask, maskChanged, opacityChanged, refreshQueued
 local maskSource, opacitySource
@@ -114,7 +115,7 @@ local function FindPriorMask(region)
             local _, addon = issecurevariable("GetMinimapShape")
             if IsAddonName(addon) then source = addon end
         end
-        return nil, "Another minimap shape provider is active", source
+        return nil, "Another addon may be customizing the minimap shape", source
     end
 
     if type(region.GetMaskTexture) == "function" then
@@ -128,8 +129,8 @@ local function FindPriorMask(region)
 end
 
 local function CheckAvailability()
-    if maskChanged then return nil, "Another minimap mask write was detected", maskSource end
-    if opacityChanged then return nil, "Another minimap opacity change was detected", opacitySource end
+    if maskChanged then return nil, transparencyConflict, maskSource end
+    if opacityChanged then return nil, transparencyConflict, opacitySource end
     if restoring then return nil, "Waiting to restore the previous minimap mask" end
     if failed then return nil, "Kong couldn't update the minimap mask" end
     if not CanSetMask(Minimap) then return nil, "The minimap frame is unavailable" end

@@ -20,7 +20,7 @@ local sections = {
     {title = "Chat Frames", group = true},
     {title = "Player Buffs", global = "BuffFrame"},
 }
-local panel, body, intro, refreshing
+local panel, body, intro, enableFading, enableFadingLabel, advanced, refreshing
 
 local function IsPublic(value)
     return not (issecretvalue and issecretvalue(value))
@@ -332,8 +332,12 @@ function A.RefreshPresetOptions()
     refreshing = true
     local locked = InCombatLockdown()
     local usable = KongKontinued_Initialized and not locked
+    enableFading:SetEnabled(usable)
+    enableFading:SetChecked(KongKontinued_Initialized and KongKontinued_Settings.enabled)
+    enableFadingLabel:SetAlpha(usable and 1 or .55)
+    advanced:SetEnabled(usable)
     local _, introHeight = intro:GetSize()
-    local y = math.max(introHeight, 16) + 26
+    local y = math.max(introHeight, 16) + 63
     for _, section in ipairs(sections) do
         if not locked then section.entries = FindEntries(section) end
         local entries = section.entries or {}
@@ -435,18 +439,35 @@ function A.RefreshPresetOptions()
     refreshing = false
 end
 
-function A.RegisterPresetOptions(parentCategory)
+function A.CreatePresetOptions(title)
     panel = CreateFrame("Frame")
     panel:Hide()
     local scroll = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -6)
+    scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -40)
     scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30, 8)
+    local heading = CreateLabel(panel, title, "GameFontNormalHuge")
+    heading:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -8)
     body = CreateFrame("Frame", nil, scroll)
     body:SetSize(1, 1)
     scroll:SetScrollChild(body)
+
+    enableFading = CreateCheckbox(body, function(check)
+        A.SetFadingFromOptions(not not check:GetChecked())
+        A.RefreshPresetOptions()
+    end)
+    enableFading:SetTooltipFunc(function()
+        Settings.InitTooltip("Enable UI fading", "Enable fading for this character using the selected profile")
+    end)
+    enableFading:SetPoint("TOPLEFT", body, "TOPLEFT", 8, -5)
+    enableFadingLabel = CreateLabel(body, "Enable UI fading")
+    enableFadingLabel:SetPoint("LEFT", enableFading, "RIGHT", 3, 0)
+    advanced = CreateButton(body, "Advanced Config", function() A.ShowAdvancedConfig() end)
+    advanced:SetWidth(122)
+    advanced:SetPoint("TOPRIGHT", body, "TOPRIGHT", -12, -9)
+
     intro = CreateLabel(body, "Use presets to get started with frame fading. Each preset sets up the rules you can fine-tune in Advanced Config.", "GameFontHighlightSmall")
-    intro:SetPoint("TOPLEFT", body, "TOPLEFT", 12, -9)
-    intro:SetPoint("TOPRIGHT", body, "TOPRIGHT", -12, -9)
+    intro:SetPoint("TOPLEFT", body, "TOPLEFT", 12, -46)
+    intro:SetPoint("TOPRIGHT", body, "TOPRIGHT", -12, -46)
     intro:SetWordWrap(true)
     for _, section in ipairs(sections) do CreateSection(section) end
     scroll:SetScript("OnSizeChanged", function(_, width)
@@ -464,5 +485,5 @@ function A.RegisterPresetOptions(parentCategory)
         if event == "PLAYER_REGEN_DISABLED" then StaticPopup_Hide(RESET_DIALOG) end
         A.RefreshPresetOptions()
     end)
-    A.PresetCategory = Settings.RegisterCanvasLayoutSubcategory(parentCategory, panel, "Presets")
+    return panel
 end

@@ -1,5 +1,5 @@
 local N, A = ...
-local category, enabledSetting, profileSetting, copySetting
+local category, profileCategory, profileSetting, copySetting
 local copyInitializer
 local defaultsHiddenForKong = false
 
@@ -27,7 +27,6 @@ local function CloseCompanionWindows()
 end
 
 function A.RefreshOptions()
-    if enabledSetting then enabledSetting:NotifyUpdate() end
     if profileSetting then profileSetting:NotifyUpdate() end
     if copySetting then copySetting:NotifyUpdate() end
     if copyInitializer and SettingsPanel:IsShown() then
@@ -35,6 +34,12 @@ function A.RefreshOptions()
         if row then row:EvaluateState() end
     end
     if A.RefreshPresetOptions then A.RefreshPresetOptions() end
+end
+
+function A.SetFadingFromOptions(enabled)
+    if not CanConfigure() or enabled == KongKontinued_Settings.enabled then return end
+    if enabled then KongKontinued_EnableCommandHandler()
+    else KongKontinued_DisableCommandHandler() end
 end
 
 local function OpenCompanion(show)
@@ -88,7 +93,7 @@ end
 
 local function IsKongCategory()
     local selected = SettingsPanel:GetCurrentCategory()
-    return selected == category or (A.PresetCategory and selected == A.PresetCategory)
+    return selected == category or selected == profileCategory
 end
 
 local function UpdateDefaultsButton()
@@ -104,25 +109,12 @@ end
 
 local function RegisterOptions()
     if category then return end
+    local title = "Kong Frame Fader Kontinued"
+    category = Settings.RegisterCanvasLayoutCategory(A.CreatePresetOptions(title), title)
     local layout
-    category, layout = Settings.RegisterVerticalLayoutCategory("Kong Frame Fader Kontinued")
+    profileCategory, layout = Settings.RegisterVerticalLayoutSubcategory(category, "Profile")
 
-    enabledSetting = Settings.RegisterProxySetting(category, N .. "_ENABLED",
-        Settings.VarType.Boolean, "Enable UI fading", Settings.CannotDefault,
-        function() return KongKontinued_Settings.enabled end,
-        function(value)
-            if CanConfigure() then
-                if value then KongKontinued_EnableCommandHandler()
-                else KongKontinued_DisableCommandHandler() end
-            end
-            -- Settings broadcasts the requested value after this setter returns.
-            -- Refresh afterward as well, so a rejected change displays actual state.
-            C_Timer.After(0, A.RefreshOptions)
-        end)
-    ConfigureInitializer(Settings.CreateCheckbox(category, enabledSetting,
-        "Enable fading for this character using the selected profile"))
-
-    profileSetting = Settings.RegisterProxySetting(category, N .. "_PROFILE",
+    profileSetting = Settings.RegisterProxySetting(profileCategory, N .. "_PROFILE",
         Settings.VarType.String, "Current profile", Settings.CannotDefault,
         function() return KongKontinued_Settings.profile end,
         function(name)
@@ -131,7 +123,7 @@ local function RegisterOptions()
             end
             C_Timer.After(0, A.RefreshOptions)
         end)
-    ConfigureInitializer(Settings.CreateDropdown(category, profileSetting, function() return GetProfileOptions(false) end,
+    ConfigureInitializer(Settings.CreateDropdown(profileCategory, profileSetting, function() return GetProfileOptions(false) end,
         "Select an account-wide profile for this character"))
 
     local add = CreateSettingsButtonInitializer("New profile", "Add Profile",
@@ -139,14 +131,14 @@ local function RegisterOptions()
     ConfigureInitializer(add)
     layout:AddInitializer(add)
 
-    copySetting = Settings.RegisterProxySetting(category, N .. "_COPY_PROFILE",
+    copySetting = Settings.RegisterProxySetting(profileCategory, N .. "_COPY_PROFILE",
         Settings.VarType.String, "Copy from", Settings.CannotDefault,
         function() return "" end,
         function(name)
             if name ~= "" then A.ShowCopyProfile(name) end
             C_Timer.After(0, A.RefreshOptions)
         end)
-    copyInitializer = Settings.CreateDropdown(category, copySetting, function() return GetProfileOptions(true) end,
+    copyInitializer = Settings.CreateDropdown(profileCategory, copySetting, function() return GetProfileOptions(true) end,
         "Replace the selected profile's configuration with an independent copy of another profile after confirmation")
     ConfigureInitializer(copyInitializer)
     copyInitializer:AddModifyPredicate(function()
@@ -161,18 +153,12 @@ local function RegisterOptions()
     ConfigureInitializer(import)
     layout:AddInitializer(import)
 
-    local advanced = CreateSettingsButtonInitializer("Frame and rule editor", "Advanced Config",
-        function() A.ShowAdvancedConfig() end, "Pick UI frames and edit their fade settings, conditions and groups", true)
-    ConfigureInitializer(advanced)
-    layout:AddInitializer(advanced)
-
     local reset = CreateSettingsButtonInitializer("Profile configuration", "Reset Profile",
         A.ResetCommandHandler, "Permanently clear all frames, fade settings, conditions and groups from the selected profile", true)
     ConfigureInitializer(reset)
     layout:AddInitializer(reset)
 
     Settings.RegisterAddOnCategory(category)
-    if A.RegisterPresetOptions then A.RegisterPresetOptions(category) end
     -- Retail exposes one shared Defaults button, with no per-category opt-out.
     -- Hide it only for Kong, including when search clearing tries to show it.
     SettingsPanel:GetSettingsList().Header.DefaultsButton:HookScript("OnShow", function(button)
@@ -182,9 +168,9 @@ local function RegisterOptions()
         end
     end)
     SettingsPanel:HookScript("OnShow", A.RefreshOptions)
-    hooksecurefunc(SettingsPanel, "DisplayCategory", function(_, selectedCategory)
+    hooksecurefunc(SettingsPanel, "DisplayCategory", function()
         UpdateDefaultsButton()
-        if selectedCategory == category then
+        if IsKongCategory() then
             CloseCompanionWindows()
             A.RefreshOptions()
         end
