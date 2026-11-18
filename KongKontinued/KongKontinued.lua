@@ -12,6 +12,13 @@ local DUMMY_FRAME = CreateFrame("frame") -- used for references to avoid abundan
 local FADER = R.Fader.construct()
 local HiddenFrames, PendingVisibility, PendingRestores = {}, {}, {}
 local ConditionStates = setmetatable({}, {__mode = "k"})
+local PresetOriginalAlpha = setmetatable({}, {__mode = "k"})
+local ChatPresetRegions = {}
+
+local function GetFadeEventRegion(region)
+	if A.MinimapPreset and A.MinimapPreset.GetTarget() == region then return Minimap end
+	return region
+end
 
 local function SetFrameShown(region, shown)
 	if not R.Fader.canAccess(FADER, region) then
@@ -36,13 +43,14 @@ local function SetFrameShown(region, shown)
 end
 
 function A.ApplyPendingVisibility()
+	if A.MinimapPreset then A.MinimapPreset.RetryRestore() end
 	if KongKontinued_Settings and KongKontinued_Settings.enabled then
 		for region, setting in pairs(KongKontinued_Frames) do
 			if setting.overrideAlpha then KongKontinued_OverrideAlpha(region, true) end
 		end
 	end
-	for region in pairs(PendingRestores) do
-		if R.Fader.setAlpha(FADER, region, 1) then PendingRestores[region] = nil end
+	for region, alpha in pairs(PendingRestores) do
+		if R.Fader.setAlpha(FADER, region, alpha) then PendingRestores[region] = nil end
 	end
 	for region, shown in pairs(PendingVisibility) do
 		local setting = KongKontinued_Frames[region]
@@ -57,6 +65,7 @@ end
 
 R.Fader.addListener(FADER, "FADE_STARTED", 
 		function(obj, event, region, fromAlpha, toAlpha, duration, smoothing, startDelay, endDelay)
+			region = GetFadeEventRegion(region)
 			local setting = KongKontinued_Frames[region]
 			PendingRestores[region] = nil
 			PendingVisibility[region] = nil
@@ -69,8 +78,12 @@ R.Fader.addListener(FADER, "FADE_STARTED",
 )
 R.Fader.addListener(FADER, "FADE_FINISHED", 
 		function(obj, event, region, toAlpha)
+			local target = GetFadeEventRegion(region)
+			if target ~= region then A.MinimapPreset.FinishFade() end
+			region = target
 			local setting = KongKontinued_Frames[region]
-			local alpha = R.Fader.getAlpha(FADER, region)
+			local alpha = setting and setting.preset and region == Minimap and toAlpha
+				or R.Fader.getAlpha(FADER, region)
 			if ( setting and setting.hideAtZeroAlpha and (alpha == 0 or (alpha == nil and toAlpha == 0)) ) then
 				SetFrameShown(region, false)
 			end
@@ -384,9 +397,28 @@ function KongKontinued_OverrideAlpha(region, override)
 	end
 end
 
+local function IsMinimapPreset(region, setting)
+	return setting and setting.preset and A.MinimapPreset and region == Minimap
+end
+
+local function GetFrameFadeAlpha(region)
+	if IsMinimapPreset(region, KongKontinued_Frames[region]) then
+		return A.MinimapPreset.GetAlpha()
+	end
+	return R.Fader.getAlpha(FADER, region)
+end
+
 function KongKontinued_Fade(region, fromAlpha, toAlpha, duration, startDelay)
 	if ( KongKontinued_Settings.enabled and (KongKontinuedConfig == nil or not KongKontinuedConfig:IsShown()) ) then
-		R.Fader.fade(FADER, region, fromAlpha, toAlpha, duration, nil, startDelay)
+		local setting = KongKontinued_Frames[region]
+		local target = region
+		if IsMinimapPreset(region, setting) then
+			target = A.MinimapPreset.Acquire()
+		elseif setting and setting.preset and PresetOriginalAlpha[region] == nil then
+			PresetOriginalAlpha[region] = PendingRestores[region] or R.Fader.getAlpha(FADER, region)
+			if PresetOriginalAlpha[region] == nil then return end
+		end
+		if target then R.Fader.fade(FADER, target, fromAlpha, toAlpha, duration, nil, startDelay) end
 	end
 end
 
@@ -400,10 +432,23 @@ local function RestoreFrame(region)
 	if reveal then
 		SetFrameShown(region, true)
 	end
-	if R.Fader.setAlpha(FADER, region, 1) then
+	local setting = KongKontinued_Frames[region]
+	if IsMinimapPreset(region, setting) then
+		local target = A.MinimapPreset.GetTarget()
+		if target then R.Fader.stopFade(FADER, target) end
+		A.MinimapPreset.Release()
+		return
+	end
+	local alpha = 1
+	if setting.preset then
+		alpha = PresetOriginalAlpha[region] or PendingRestores[region]
+		PresetOriginalAlpha[region] = nil
+		if alpha == nil then return end
+	end
+	if R.Fader.setAlpha(FADER, region, alpha) then
 		PendingRestores[region] = nil
 	else
-		PendingRestores[region] = true
+		PendingRestores[region] = alpha
 	end
 end
 
@@ -441,7 +486,7 @@ end
 
 function A.CalculateFadeIn(region)
 	local setting = KongKontinued_Frames[region]
-	local currentAlpha = R.Fader.getAlpha(FADER, region)
+	local currentAlpha = GetFrameFadeAlpha(region)
 	local chosenTrigger
 	
 	-- NOTE: choose the trigger with the highest alpha, with the fastest speed
@@ -476,7 +521,7 @@ function A.FadeOut(region, condition)
 	if ( condition.refs == 0 ) then
 		local speed = GetFadeSpeed(condition, condition.secondsOut)
 		local displacement = 0
-		local currentAlpha = R.Fader.getAlpha(FADER, region)
+		local currentAlpha = GetFrameFadeAlpha(region)
 		if ( currentAlpha ~= nil and speed > 0 and speed < math.huge ) then
 			local rate = condition.alphaOut > condition.alphaIn and speed or -speed
 			local offset = (condition.alphaIn - currentAlpha) / rate
@@ -491,8 +536,9 @@ end
 
 function KongKontinued_CalculateFadeOut(region)
 	local setting = KongKontinued_Frames[region]
-	local currentAlpha = R.Fader.getAlpha(FADER, region)
+	local currentAlpha = GetFrameFadeAlpha(region)
 	local endAlpha = setting.TriggerDefaults.alphaOut
+	local activeAlpha
 	local duration = 0
 	local delay = setting.TriggerDefaults.secondsTillOut
 	local chosenTrigger
@@ -501,7 +547,7 @@ function KongKontinued_CalculateFadeOut(region)
 		if ( trigger.refs > 0 ) then
 			if ( currentAlpha ~= nil and trigger.alphaIn >= currentAlpha ) then return end
 
-			endAlpha = math.max(endAlpha, trigger.alphaIn)
+			activeAlpha = math.max(activeAlpha or 0, trigger.alphaIn)
 		elseif ( trigger.lastFadeTime ~= nil ) then
 			chosenTrigger = chosenTrigger or trigger
 
@@ -516,6 +562,9 @@ function KongKontinued_CalculateFadeOut(region)
 				chosenTrigger = trigger
 			end
 		end
+	end
+	if activeAlpha then
+		endAlpha = setting.preset and activeAlpha or math.max(endAlpha, activeAlpha)
 	end
 
 	if ( chosenTrigger ~= nil ) then
@@ -553,6 +602,16 @@ function KongKontinued_FindGlobalIndex(region)
 	end
 end
 
+function A.RefreshPresetFade(region)
+	for _, trigger in ipairs(KongKontinued_Frames[region]) do
+		if trigger.refs > 0 then
+			A.CalculateFadeIn(region)
+			return
+		end
+	end
+	KongKontinued_CalculateFadeOut(region)
+end
+
 function A.CreateTrigger(Frame)
 
 	local Trigger = {}
@@ -567,10 +626,10 @@ function A.CreateTrigger(Frame)
 	return Trigger
 end
 
-function KongKontinued_RegisterFrame(region)
+function KongKontinued_RegisterFrame(region, presetPath)
 	if not KongKontinued_CanAccessFrame(region) then return end
 	KongKontinued_Frames[region] = {}
-	local index = KongKontinued_FindGlobalIndex(region)
+	local index = presetPath or KongKontinued_FindGlobalIndex(region)
 	if ( index ~= nil ) then
 		KongKontinued_Frames[region].index = index
 	else
@@ -578,12 +637,30 @@ function KongKontinued_RegisterFrame(region)
 		KongKontinued_Warning(CANNOT_SAVE)
 	end
 	KongKontinued_Frames[region].version = VERSION
+	if presetPath then
+		KongKontinued_Frames[region].preset = true
+		if index:match('^%["ChatFrame%d+"%]$') then ChatPresetRegions[region] = true end
+	end
 	KongKontinued_Frames[region].TriggerDefaults = A.CreateTrigger(region)
+	if presetPath then KongKontinued_Frames[region].TriggerDefaults.alphaOut = .25 end
 	KongKontinued_Frames[region].Mouseover = KongKontinued_AddTrigger(region, LibUSC:Create("Condition", LibUSC:Create(MouseoverTypeName)))
 	KongKontinued_AddTrigger(region, LibUSC:Create("Condition", LibUSC:Create("Unit in Combat")))
+	if presetPath then
+		local mouseRegion = lastMouseStart
+		while mouseRegion do
+			if mouseRegion == region then
+				A.FadeIn(region, KongKontinued_Frames[region].Mouseover)
+				break
+			end
+			mouseRegion = KongKontinued_GetFrameParent(mouseRegion)
+		end
+		lastMouseFocus = false
+		A.RefreshPresetFade(region)
+	end
 end
 
 function KongKontinued_UnregisterFrame(region)
+	local setting = KongKontinued_Frames[region]
 	for i = #KongKontinued_Frames[region], 1, -1 do
 		KongKontinued_RemoveTrigger(region, KongKontinued_Frames[region][i])
 	end
@@ -598,6 +675,8 @@ function KongKontinued_UnregisterFrame(region)
 		end
 	end
 	KongKontinued_Frames[region] = nil
+	ChatPresetRegions[region] = nil
+	if setting.preset then lastMouseFocus = false end
 end
 
 function A.OnConditionStateChange(region, trigger)
@@ -743,6 +822,9 @@ function A.LoadFrames()
 		) then
 			setting.loader = nil
 			KongKontinued_Frames[region] = setting
+			if setting.preset and setting.index:match('^%["ChatFrame%d+"%]$') then
+				ChatPresetRegions[region] = true
+			end
 			table.remove(KongKontinued_Settings.Frames, i)
 
 			setmetatable(setting.TriggerDefaults, {__index = TriggerDefaults})
@@ -821,6 +903,7 @@ function KongKontinued_Unload()
 	end
 	
 	KongKontinued_Frames = {}
+	ChatPresetRegions = {}
 	lastMouseFocus = nil
 	lastMouseStart = nil
 	KongKontinued_Initialized = false
@@ -870,6 +953,19 @@ function A.OnUpdate(self, elapsed)
 	end
 
 	local mouseFocus = KongKontinued_GetMouseFocus()
+	-- Detached chat can take the wheel while the world still has mouse focus.
+	-- Keep the native scrolling and line-fade scripts in charge of the text.
+	if mouseFocus == nil or mouseFocus == WorldFrame then
+		for region in pairs(ChatPresetRegions) do
+			if KongKontinued_CanAccessFrame(region) then
+				local over, visible = region:IsMouseOver(), region:IsVisible()
+				if not (issecretvalue and (issecretvalue(over) or issecretvalue(visible))) and over and visible then
+					mouseFocus = region
+					break
+				end
+			end
+		end
+	end
 	if ( mouseFocus ~= lastMouseFocus ) then
 		local mouseStart = mouseFocus ~= nil and A.FindFirstTrackedRegion(mouseFocus) or nil
 		if ( mouseStart ~= lastMouseStart ) then

@@ -1,0 +1,418 @@
+local _, A = ...
+
+local RESET_DIALOG = "KONGKONTINUED_RESET_PRESETS"
+local sliderLabels = {"Idle", "Mouseover", "Combat"}
+local nativeBars = {
+    {"MainActionBar", "Action Bar 1"},
+    {"MultiBarBottomLeft", "Action Bar 2", "MultiBar1_IsVisible"},
+    {"MultiBarBottomRight", "Action Bar 3", "MultiBar2_IsVisible"},
+    {"MultiBarRight", "Action Bar 4", "MultiBar3_IsVisible"},
+    {"MultiBarLeft", "Action Bar 5", "MultiBar4_IsVisible"},
+    {"MultiBar5", "Action Bar 6", "MultiBar5_IsVisible"},
+    {"MultiBar6", "Action Bar 7", "MultiBar6_IsVisible"},
+    {"MultiBar7", "Action Bar 8", "MultiBar7_IsVisible"},
+}
+local sections = {
+    {title = "Action Bars", group = true},
+    {title = "Minimap", global = "Minimap"},
+    {title = "Objective Tracker", global = "ObjectiveTrackerFrame"},
+    {title = "Chat Frames", group = true},
+    {title = "Player Buffs", global = "BuffFrame"},
+}
+local panel, body, intro, refreshing
+
+local function IsPublic(value)
+    return not (issecretvalue and issecretvalue(value))
+end
+
+local function FramePath(name)
+    return "[" .. string.format("%q", name) .. "]"
+end
+
+local function FindEntries(section)
+    local entries = {}
+    if section.global then
+        entries[1] = {name = section.global, title = section.title, region = _G[section.global]}
+    elseif section == sections[1] then
+        for _, bar in ipairs(nativeBars) do
+            local name, title, predicate = unpack(bar)
+            local region = _G[name]
+            if name == "MainActionBar" and not KongKontinued_CanAccessFrame(region) then
+                name, region = "MainMenuBar", MainMenuBar
+            end
+            if KongKontinued_CanAccessFrame(region) then
+                local isEnabled = predicate and _G[predicate]
+                local shown
+                if isEnabled then shown = isEnabled()
+                elseif not predicate then shown = true
+                else shown = region:IsShown() end
+                if IsPublic(shown) and shown then
+                    entries[#entries + 1] = {name = name, title = title, region = region}
+                end
+            end
+        end
+    else
+        local function AddChatWindow(region, id)
+            local name = "ChatFrame" .. id
+            if KongKontinued_CanAccessFrame(region) and IsPublic(region.isTemporary) and not region.isTemporary then
+                local title = FCF_GetChatWindowInfo(id)
+                if not IsPublic(title) or type(title) ~= "string" or title == "" then title = "Chat " .. id end
+                entries[#entries + 1] = {name = name, title = title, region = region}
+            end
+        end
+        if FCF_IterateActiveChatWindows and FCF_GetChatWindowInfo then
+            FCF_IterateActiveChatWindows(AddChatWindow)
+        end
+    end
+    return entries
+end
+
+local function FindSetting(entry)
+    local setting = KongKontinued_Frames[entry.region]
+    if setting then return setting end
+    local path = FramePath(entry.name)
+    -- A different saved path can refer to the same frame. Never seed a
+    -- second configuration while that frame's existing rule is pending.
+    for _, candidate in ipairs(KongKontinued_Settings.Frames) do
+        if candidate.index == path then return candidate end
+        local resolve = A.LegacyImport.CompileFramePath(candidate.index)
+        if resolve then
+            local ok, region = pcall(resolve)
+            if ok and region ~= nil and region == entry.region then return candidate end
+        end
+    end
+end
+
+local fadeKeys = {"secondsIn", "secondsOut", "secondsTillOut", "alphaIn", "alphaOut"}
+
+local function ContainsOnlyOpacityChanges(setting, entry)
+    if not setting.preset or setting.index ~= FramePath(entry.name)
+        or setting.overrideAlpha or setting.hideAtZeroAlpha or #setting ~= 2 then return false end
+    for _, group in pairs(KongKontinued_Settings.Groups) do
+        if group[setting.index] ~= nil then return false end
+    end
+    local defaults = setting.TriggerDefaults
+    for _, key in ipairs(fadeKeys) do
+        if key ~= "alphaOut" and key ~= "alphaIn" and rawget(defaults, key) ~= nil then return false end
+    end
+    local expected = {"Frame has Mouse Focus", "Unit in Combat"}
+    for i, name in ipairs(expected) do
+        local trigger = setting[i]
+        local root = trigger.Condition
+        local condition = root and root.Parameters and root.Parameters[1]
+        if not condition or root.name ~= "Condition" or #root.Parameters ~= 1
+            or condition.name ~= name or (condition.Parameters and next(condition.Parameters)) then return false end
+        for _, key in ipairs(fadeKeys) do
+            if key ~= "alphaIn" and rawget(trigger, key) ~= nil then return false end
+        end
+    end
+    return true
+end
+
+local function GetState(entry)
+    local region = entry.region
+    if not KongKontinued_Initialized or not KongKontinued_CanAccessFrame(region) then return "unavailable" end
+    local setting = FindSetting(entry)
+    local available = entry.name ~= "Minimap" or A.MinimapPreset.IsAvailable()
+    if not setting then return available and "off" or "unavailable" end
+    if KongKontinued_Frames[region] ~= setting then return "unavailable" end
+    if not ContainsOnlyOpacityChanges(setting, entry) then return "advanced", setting end
+    return available and "on" or "suspended", setting
+end
+
+local function SetEnabled(entry, enabled)
+    local state = GetState(entry)
+    if enabled and state == "off" then
+        KongKontinued_RegisterFrame(entry.region, FramePath(entry.name))
+    elseif not enabled and (state == "on" or state == "suspended") then
+        KongKontinued_UnregisterFrame(entry.region)
+    end
+end
+
+local function GetValues(setting)
+    return setting.TriggerDefaults.alphaOut, setting[1].alphaIn, setting[2].alphaIn
+end
+
+local function SetOpacity(section, index, alpha)
+    if refreshing or not A.CanModifyProfiles() then return end
+    alpha = math.floor(alpha + .5) / 100
+    for _, entry in ipairs(FindEntries(section)) do
+        local state, setting = GetState(entry)
+        if state == "on" then
+            if index == 1 then setting.TriggerDefaults.alphaOut = alpha
+            else setting[index - 1].alphaIn = alpha end
+            A.RefreshPresetFade(entry.region)
+        end
+    end
+    A.RefreshPresetOptions()
+end
+
+local function ResetEntries(request)
+    if not panel:IsVisible() or not A.CanModifyProfiles() or not A.IsCurrentProfileTarget(request.profile) then return end
+    local current = FindEntries(request.section)
+    local listed = {}
+    for _, entry in ipairs(current) do listed[entry.region or entry.name] = true end
+    for _, candidate in ipairs(request.entries) do
+        local entry = candidate.entry
+        local state, setting = GetState(entry)
+        if not listed[entry.region] or setting ~= candidate.setting
+            or (state ~= "on" and state ~= "advanced") then return end
+    end
+    for _, candidate in ipairs(request.entries) do
+        local entry = candidate.entry
+        local region = entry.region
+        KongKontinued_UnregisterFrame(region)
+        KongKontinued_RegisterFrame(region, FramePath(entry.name))
+    end
+    A.RefreshPresetOptions()
+end
+
+StaticPopupDialogs[RESET_DIALOG] = {
+    text = "Reset %s to preset defaults? This discards advanced changes to the selected preset frames in the current profile.",
+    button1 = "Reset",
+    button2 = CANCEL,
+    OnAccept = function(_, request) ResetEntries(request) end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    showAlert = true,
+}
+
+local function RequestReset(section, entry)
+    if not A.CanModifyProfiles() then return end
+    local request = {section = section, entries = {}, profile = A.CurrentProfileTarget()}
+    local needsConfirmation
+    for _, candidate in ipairs(entry and {entry} or FindEntries(section)) do
+        local state, setting = GetState(candidate)
+        if setting and setting.preset and (state == "on" or state == "advanced") then
+            table.insert(request.entries, {entry = candidate, setting = setting})
+            needsConfirmation = needsConfirmation or state == "advanced"
+        end
+    end
+    if #request.entries == 0 then return end
+    if needsConfirmation then
+        StaticPopup_Show(RESET_DIALOG, entry and entry.title or section.title, nil, request)
+    else
+        ResetEntries(request)
+    end
+end
+
+local function CreateButton(parent, label, onClick)
+    local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    button:SetSize(58, 21)
+    button:SetText(label)
+    button:SetScript("OnClick", onClick)
+    return button
+end
+
+local function CreateLabel(parent, text, font)
+    local label = parent:CreateFontString(nil, "ARTWORK", font or "GameFontHighlight")
+    label:SetJustifyH("LEFT")
+    label:SetText(text)
+    return label
+end
+
+local function CreateCheckbox(parent, onClick)
+    local checkbox = CreateFrame("CheckButton", nil, parent, "SettingsCheckboxTemplate")
+    checkbox:SetScript("OnClick", onClick)
+    return checkbox
+end
+
+local function CreateFrameRow(section)
+    local row = CreateFrame("Frame", nil, section.frame)
+    row:SetHeight(33)
+    row.check = CreateCheckbox(row, function(check)
+        if A.CanModifyProfiles() then SetEnabled(row.entry, check:GetChecked()) end
+        A.RefreshPresetOptions()
+    end)
+    row.check:SetPoint("LEFT", row, "LEFT")
+    row.reset = CreateButton(row, "Reset", function() RequestReset(section, row.entry) end)
+    row.reset:SetPoint("RIGHT", row, "RIGHT")
+    row.config = CreateButton(row, "Config", function() A.ShowAdvancedConfig(row.entry.region) end)
+    row.config:SetPoint("RIGHT", row.reset, "LEFT", -3, 0)
+    row.label = CreateLabel(row, "", "GameFontHighlightSmall")
+    row.label:SetPoint("LEFT", row.check, "RIGHT", 2, 4)
+    row.label:SetPoint("RIGHT", row.config, "LEFT", -3, 4)
+    row.label:SetWordWrap(false)
+    row.status = CreateLabel(row, "", "GameFontHighlightSmall")
+    row.status:SetTextColor(.65, .65, .65)
+    row.status:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", 0, -1)
+    row.status:SetWordWrap(false)
+    return row
+end
+
+local function CreateSection(section)
+    local frame = CreateFrame("Frame", nil, body)
+    section.frame = frame
+    section.titleLabel = CreateLabel(frame, section.title, "GameFontHighlightLarge")
+    section.titleLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -5)
+    section.reset = CreateButton(frame, "Reset", function() RequestReset(section) end)
+    section.reset:SetPoint("TOPRIGHT", frame, "TOPRIGHT")
+    local last = section.reset
+    if not section.group then
+        section.config = CreateButton(frame, "Config", function()
+            local entry = FindEntries(section)[1]
+            if entry then A.ShowAdvancedConfig(entry.region) end
+        end)
+        section.config:SetPoint("RIGHT", last, "LEFT", -4, 0)
+        last = section.config
+    end
+    section.checkLabel = CreateLabel(frame, section.group and "All" or "Enable", "GameFontHighlightSmall")
+    section.checkLabel:SetPoint("RIGHT", last, "LEFT", -8, 0)
+    section.check = CreateCheckbox(frame, function(check)
+        local enabled = section.mixed:IsShown() or check:GetChecked()
+        if A.CanModifyProfiles() then
+            for _, entry in ipairs(FindEntries(section)) do SetEnabled(entry, enabled) end
+        end
+        A.RefreshPresetOptions()
+    end)
+    section.check:SetPoint("RIGHT", section.checkLabel, "LEFT", -1, 0)
+    section.mixed = section.check:CreateTexture(nil, "OVERLAY")
+    section.mixed:SetColorTexture(.82, .82, .82, 1)
+    section.mixed:SetSize(10, 2)
+    section.mixed:SetPoint("CENTER")
+    section.mixed:Hide()
+    local divider = frame:CreateTexture(nil, "ARTWORK")
+    divider:SetAtlas("Options_HorizontalDivider")
+    divider:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -26)
+    divider:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -26)
+    divider:SetHeight(2)
+
+    section.sliders, section.rows = {}, {}
+    for index, label in ipairs(sliderLabels) do
+        local sliderIndex = index
+        local control = CreateFrame("Frame", nil, frame, "MinimalSliderWithSteppersTemplate")
+        control:Init(0, 0, 100, 100)
+        control:RegisterCallback(MinimalSliderWithSteppersMixin.Event.OnValueChanged, function(_, value)
+            SetOpacity(section, sliderIndex, value)
+        end, control)
+        control.label = CreateLabel(frame, label, "GameFontHighlightSmall")
+        control.label:SetPoint("BOTTOMLEFT", control, "TOPLEFT", 1, 2)
+        if control.Slider.SetNarrationLabelRegion then control.Slider:SetNarrationLabelRegion(control.label) end
+        section.sliders[index] = control
+    end
+    section.status = CreateLabel(frame, "", "GameFontHighlightSmall")
+    section.status:SetTextColor(.65, .65, .65)
+    section.status:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -77)
+end
+
+function A.RefreshPresetOptions()
+    if refreshing or not panel or not panel:IsVisible() then return end
+    local width = body:GetWidth() - 24
+    if width <= 0 then return end
+    refreshing = true
+    local locked = InCombatLockdown()
+    local usable = KongKontinued_Initialized and not locked
+    local _, introHeight = intro:GetSize()
+    local y = math.max(introHeight, 16) + 16
+    for _, section in ipairs(sections) do
+        if not locked then section.entries = FindEntries(section) end
+        local entries = section.entries or {}
+        local columnCount = width >= 440 and 2 or 1
+        local rowWidth = (width - (columnCount - 1) * 12) / columnCount
+        local sliderWidth = (width - 32) / 3
+        local enabled, eligible, resettable = 0, 0, 0
+        local values, mixed = {}, {}
+        section.status:SetText("")
+        if not section.group then section.config:SetEnabled(false) end
+        for i, entry in ipairs(entries) do
+            local state, setting = GetState(entry)
+            if state == "on" or state == "off" or state == "suspended" then eligible = eligible + 1 end
+            local canReset = setting and setting.preset and (state == "on" or state == "advanced")
+            if canReset then resettable = resettable + 1 end
+            if state == "on" then
+                enabled = enabled + 1
+                local idle, hover, combat = GetValues(setting)
+                for j, value in ipairs({idle, hover, combat}) do
+                    if values[j] == nil then values[j] = value
+                    elseif values[j] ~= value then mixed[j] = true end
+                end
+            end
+            local status = state == "advanced" and "Advanced configuration applied"
+                or (state == "unavailable" or state == "suspended") and "Unavailable" or ""
+            local configurable = usable and KongKontinued_CanAccessFrame(entry.region)
+            if section.group then
+                local row = section.rows[i]
+                if not row then
+                    row = CreateFrameRow(section)
+                    section.rows[i] = row
+                end
+                row.entry = entry
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", section.frame, "TOPLEFT",
+                    ((i - 1) % columnCount) * (rowWidth + 12), -77 - math.floor((i - 1) / columnCount) * 33)
+                row:SetWidth(rowWidth)
+                row.label:SetText(entry.title:gsub("|", "||"))
+                row.status:SetWidth(rowWidth - 32)
+                row.status:SetText(status)
+                row.check:SetChecked(state == "on" or state == "advanced")
+                row.check:SetEnabled(usable and (state == "on" or state == "off"))
+                row.config:SetEnabled(configurable)
+                row.reset:SetEnabled(usable and not not canReset)
+                row:Show()
+            else
+                section.status:SetText(status)
+                section.config:SetEnabled(configurable)
+                section.check:SetChecked(state == "on" or state == "advanced" or state == "suspended")
+            end
+        end
+        if section.group then section.check:SetChecked(eligible > 0 and enabled == eligible) end
+        section.mixed:SetShown(section.group and enabled > 0 and enabled < eligible)
+        section.check:SetEnabled(usable and eligible > 0)
+        section.reset:SetEnabled(usable and resettable > 0)
+        for i = #entries + 1, #section.rows do section.rows[i]:Hide() end
+        for i, slider in ipairs(section.sliders) do
+            local value = values[i]
+            local display = mixed[i] and "Mixed" or value and string.format("%d%%", math.floor(value * 100 + .5)) or nil
+            slider.label:SetText(display and (sliderLabels[i] .. "  " .. display) or sliderLabels[i])
+            slider:SetWidth(sliderWidth)
+            slider:ClearAllPoints()
+            slider:SetPoint("TOPLEFT", section.frame, "TOPLEFT", (i - 1) * (sliderWidth + 16), -48)
+            slider:SetValue(value and value * 100 or 0)
+            slider:SetEnabled(usable and enabled > 0)
+            slider.label:SetAlpha(usable and enabled > 0 and 1 or .5)
+        end
+        local height = 80
+        if section.group then height = height + math.ceil(#entries / columnCount) * 33
+        elseif section.status:GetText() ~= "" then height = height + 14 end
+        section.frame:ClearAllPoints()
+        section.frame:SetPoint("TOPLEFT", body, "TOPLEFT", 12, -y)
+        section.frame:SetWidth(width)
+        section.frame:SetHeight(height)
+        y = y + height + 12
+    end
+    body:SetHeight(y)
+    refreshing = false
+end
+
+function A.RegisterPresetOptions(parentCategory)
+    panel = CreateFrame("Frame")
+    panel:Hide()
+    local scroll = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -6)
+    scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30, 8)
+    body = CreateFrame("Frame", nil, scroll)
+    body:SetSize(1, 1)
+    scroll:SetScrollChild(body)
+    intro = CreateLabel(body, "Use presets to get started with frame fading. Each preset sets up the rules you can fine-tune in Advanced Config.", "GameFontHighlightSmall")
+    intro:SetPoint("TOPLEFT", body, "TOPLEFT", 12, -9)
+    intro:SetPoint("TOPRIGHT", body, "TOPRIGHT", -12, -9)
+    intro:SetWordWrap(true)
+    for _, section in ipairs(sections) do CreateSection(section) end
+    scroll:SetScript("OnSizeChanged", function(_, width)
+        if width > 0 then body:SetWidth(width) end
+        A.RefreshPresetOptions()
+    end)
+    panel:SetScript("OnShow", A.RefreshPresetOptions)
+    panel:SetScript("OnHide", function() StaticPopup_Hide(RESET_DIALOG) end)
+    panel:RegisterEvent("PLAYER_REGEN_DISABLED")
+    panel:RegisterEvent("PLAYER_REGEN_ENABLED")
+    panel:RegisterEvent("UPDATE_CHAT_WINDOWS")
+    panel:RegisterEvent("ACTIONBAR_PAGE_CHANGED")
+    panel:RegisterEvent("CVAR_UPDATE")
+    panel:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_DISABLED" then StaticPopup_Hide(RESET_DIALOG) end
+        A.RefreshPresetOptions()
+    end)
+    A.PresetCategory = Settings.RegisterCanvasLayoutSubcategory(parentCategory, panel, "Presets")
+end

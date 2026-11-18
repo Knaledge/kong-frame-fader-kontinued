@@ -86,11 +86,11 @@ local function IsPublic(value)
     return not (issecretvalue and issecretvalue(value))
 end
 
-local function GetPickerGeometry(Frame)
+local function GetPickerGeometry(Frame, allowHidden)
     if InCombatLockdown() or not KongKontinued_CanAccessFrame(Frame) then return end
     local restricted = Frame:IsAnchoringRestricted()
     local shown = Frame:IsShown()
-    if not IsPublic(restricted) or restricted or not IsPublic(shown) or not shown then return end
+    if not IsPublic(restricted) or restricted or not IsPublic(shown) or (not shown and not allowHidden) then return end
     local width, height = Frame:GetWidth(), Frame:GetHeight()
     if not IsPublic(width) or not IsPublic(height) or type(width) ~= "number" or type(height) ~= "number" then return end
     return width, height
@@ -105,7 +105,7 @@ CombatWatcher:SetScript("OnEvent", function()
     end
 end)
 
-function KongKontinuedConfig_Show()
+function KongKontinuedConfig_Show(region)
 
     if InCombatLockdown() then
         KongKontinued_Warning("Advanced Config cannot be opened during combat")
@@ -154,6 +154,21 @@ function KongKontinuedConfig_Show()
             KongKontinuedConfig_SelectedFrames[PreviouslySelectedFrame] = nil
         end
     end
+
+    if region then
+        for cover in pairs(KongKontinuedConfig_SelectedFrames) do
+            KongKontinuedConfig_SelectedFrames[cover] = nil
+            KongKontinuedConfig_CoverButton_Update(cover)
+        end
+        local cover = KongKontinuedConfig_CreateCoverButton(region, true)
+        if cover then
+            KongKontinuedConfig_SelectedFrames[cover] = cover
+            KongKontinuedConfig_CoverButton_Update(cover)
+            if not region:IsShown() then cover:Hide() end
+        else
+            KongKontinuedConfig:SetStatusText("This frame is currently unavailable in the picker.")
+        end
+    end
     
     -- Make sure the config frame is on top
     KongKontinuedConfig.frame:SetFrameStrata("DIALOG")
@@ -161,6 +176,7 @@ function KongKontinuedConfig_Show()
     
     -- Update the config widgets' states
     KongKontinuedConfig_UpdateComponents()
+    if region then KongKontinuedConfig_AutoExpandAndCollapse() end
     
 end
 
@@ -172,9 +188,9 @@ function KongKontinuedConfig_CreateChildCoverButtons(Frame)
     end
 end
 
-function KongKontinuedConfig_CreateCoverButton(Frame)
+function KongKontinuedConfig_CreateCoverButton(Frame, allowHidden)
 
-    local width, height = GetPickerGeometry(Frame)
+    local width, height = GetPickerGeometry(Frame, allowHidden)
     if not width then
         local cover = KongKontinuedConfig_Frames[Frame]
         if cover then cover:Hide(); KongKontinuedConfig_SelectedFrames[cover] = nil end
@@ -235,6 +251,7 @@ function KongKontinuedConfig_CreateCoverButton(Frame)
     end
     KongKontinuedConfig_Frames[Frame]:SetPoint("TOPLEFT", Frame, "TOPLEFT", -xoff, yoff)
     KongKontinuedConfig_Frames[Frame]:SetPoint("BOTTOMRIGHT", Frame, "BOTTOMRIGHT", xoff, -yoff)
+    return KongKontinuedConfig_Frames[Frame]
 end
 
 function KongKontinuedConfig_OnClose()

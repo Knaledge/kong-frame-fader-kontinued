@@ -34,6 +34,7 @@ function A.RefreshOptions()
         local row = SettingsPanel:GetSettingsList().ScrollBox:FindFrame(copyInitializer)
         if row then row:EvaluateState() end
     end
+    if A.RefreshPresetOptions then A.RefreshPresetOptions() end
 end
 
 local function OpenCompanion(show)
@@ -48,8 +49,8 @@ local function OpenCompanion(show)
     show()
 end
 
-function A.ShowAdvancedConfig()
-    OpenCompanion(function() KongKontinuedConfig_Show() end)
+function A.ShowAdvancedConfig(region)
+    OpenCompanion(function() KongKontinuedConfig_Show(region) end)
 end
 
 function A.ShowLegacyImport()
@@ -85,9 +86,14 @@ local function GetProfileOptions(copyFrom)
     return options:GetData()
 end
 
+local function IsKongCategory()
+    local selected = SettingsPanel:GetCurrentCategory()
+    return selected == category or (A.PresetCategory and selected == A.PresetCategory)
+end
+
 local function UpdateDefaultsButton()
     local button = SettingsPanel:GetSettingsList().Header.DefaultsButton
-    if SettingsPanel:GetCurrentCategory() == category then
+    if IsKongCategory() then
         defaultsHiddenForKong = true
         button:Hide()
     elseif defaultsHiddenForKong then
@@ -156,7 +162,7 @@ local function RegisterOptions()
     layout:AddInitializer(import)
 
     local advanced = CreateSettingsButtonInitializer("Frame and rule editor", "Advanced Config",
-        A.ShowAdvancedConfig, "Pick UI frames and edit their fade settings, conditions and groups", true)
+        function() A.ShowAdvancedConfig() end, "Pick UI frames and edit their fade settings, conditions and groups", true)
     ConfigureInitializer(advanced)
     layout:AddInitializer(advanced)
 
@@ -166,10 +172,11 @@ local function RegisterOptions()
     layout:AddInitializer(reset)
 
     Settings.RegisterAddOnCategory(category)
+    if A.RegisterPresetOptions then A.RegisterPresetOptions(category) end
     -- Retail exposes one shared Defaults button, with no per-category opt-out.
     -- Hide it only for Kong, including when search clearing tries to show it.
     SettingsPanel:GetSettingsList().Header.DefaultsButton:HookScript("OnShow", function(button)
-        if SettingsPanel:GetCurrentCategory() == category then
+        if IsKongCategory() then
             defaultsHiddenForKong = true
             button:Hide()
         end
