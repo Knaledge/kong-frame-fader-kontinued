@@ -18,6 +18,6 @@ LegacyImport.lua
 KongKontinued.lua
 CommandLine.lua
 MinimapPreset.lua
-UnitFramePresets.lua
+FramePresetTransparency.lua
 Presets.lua
 Options.lua

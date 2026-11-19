@@ -20,11 +20,11 @@ local actionBarSection = {title = "Action Bars", group = true}
 local sections = {
     {title = "Objective Tracker", global = "ObjectiveTrackerFrame"},
     {title = "Minimap", global = "Minimap", getUnavailableReason = A.MinimapPreset.GetUnavailableReason},
-    {title = "Player", global = "PlayerFrame", getUnavailableReason = A.UnitFramePresets.GetUnavailableReason},
-    {title = "Target", global = "TargetFrame", getUnavailableReason = A.UnitFramePresets.GetUnavailableReason},
+    {title = "Player", global = "PlayerFrame", getUnavailableReason = A.FramePresetTransparency.GetUnavailableReason},
+    {title = "Target", global = "TargetFrame", getUnavailableReason = A.FramePresetTransparency.GetUnavailableReason},
     {title = "Player Buffs", global = "BuffFrame"},
     actionBarSection,
-    {title = "Chat Frames", group = true},
+    {title = "Chat Frames", group = true, getUnavailableReason = A.FramePresetTransparency.GetUnavailableReason},
 }
 local panel, body, intro, enableFading, enableFadingLabel, advanced, refreshing
 
@@ -59,18 +59,14 @@ local function FindEntries(section)
                 end
             end
         end
-    else
-        local function AddChatWindow(region, id)
+    elseif FCF_GetChatWindowInfo then
+        A.FramePresetTransparency.ForEachChatFrame(function(region, id)
             local name = "ChatFrame" .. id
-            if KongKontinued_CanAccessFrame(region) and IsPublic(region.isTemporary) and not region.isTemporary then
-                local title = FCF_GetChatWindowInfo(id)
-                if not IsPublic(title) or type(title) ~= "string" or title == "" then title = "Chat " .. id end
-                entries[#entries + 1] = {name = name, title = title, region = region}
-            end
-        end
-        if FCF_IterateActiveChatWindows and FCF_GetChatWindowInfo then
-            FCF_IterateActiveChatWindows(AddChatWindow)
-        end
+            local title = FCF_GetChatWindowInfo(id)
+            if not IsPublic(title) or type(title) ~= "string" or title == "" then title = "Chat " .. id end
+            entries[#entries + 1] = {name = name, title = title, region = region,
+                getUnavailableReason = section.getUnavailableReason}
+        end)
     end
     return entries
 end
@@ -160,7 +156,7 @@ end
 local function GetResetMode(entry, state, setting, individual)
     if not setting or not (individual or setting.preset == true) then return end
     if state == "on" or state == "advanced" then return "defaults" end
-    if state == "suspended" and not ContainsOnlyOpacityChanges(setting, entry) then return "clear" end
+    if individual and state == "suspended" and not ContainsOnlyOpacityChanges(setting, entry) then return "clear" end
 end
 
 local function GetResetGroupImpact(entries)
@@ -310,18 +306,25 @@ local function HideUnavailableTooltip(frame)
     if GameTooltip:IsOwned(frame) then GameTooltip:Hide() end
 end
 
-local function CreateUnavailableTooltip(section)
-    local frame = CreateFrame("Frame", nil, section.frame)
-    frame:SetPoint("TOPLEFT", section.check, "TOPLEFT")
-    frame:SetPoint("BOTTOMLEFT", section.check, "BOTTOMLEFT")
-    frame:SetPoint("RIGHT", section.checkLabel, "RIGHT", 2, 0)
-    frame:SetFrameLevel(section.check:GetFrameLevel() + 1)
+local function CreateUnavailableTooltip(parent, checkbox, label)
+    local frame = CreateFrame("Frame", nil, parent)
+    frame:SetPoint("TOPLEFT", checkbox, "TOPLEFT")
+    frame:SetPoint("BOTTOMLEFT", checkbox, "BOTTOMLEFT")
+    frame:SetPoint("RIGHT", label, "RIGHT", 2, 0)
+    frame:SetFrameLevel(checkbox:GetFrameLevel() + 1)
     frame:EnableMouse(true)
     frame:SetScript("OnEnter", ShowUnavailableTooltip)
     frame:SetScript("OnLeave", HideUnavailableTooltip)
     frame:SetScript("OnHide", HideUnavailableTooltip)
     frame:Hide()
     return frame
+end
+
+local function UpdateUnavailableTooltip(tooltip, title, reason, source, showConfigWarning)
+    tooltip.title, tooltip.reason, tooltip.source = title, reason, source
+    tooltip.showConfigWarning = showConfigWarning
+    tooltip:SetShown(reason ~= nil)
+    if reason and GameTooltip:IsOwned(tooltip) then ShowUnavailableTooltip(tooltip) end
 end
 
 local function CreateFrameRow(section)
@@ -340,6 +343,7 @@ local function CreateFrameRow(section)
     row.label:SetPoint("LEFT", row.check, "RIGHT", 2, 4)
     row.label:SetPoint("RIGHT", row.config, "LEFT", -3, 4)
     row.label:SetWordWrap(false)
+    if section.getUnavailableReason then row.unavailableTooltip = CreateUnavailableTooltip(row, row.check, row.label) end
     row.status = CreateLabel(row, "", "GameFontHighlightSmall")
     row.status:SetTextColor(.65, .65, .65)
     row.status:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", 0, -1)
@@ -365,14 +369,23 @@ local function CreateSection(section)
     section.check = CreateCheckbox(frame, function(check)
         local enabled = section.mixed:IsShown() or check:GetChecked()
         if A.CanModifyProfiles() then
-            for _, entry in ipairs(FindEntries(section)) do SetEnabled(entry, enabled) end
+            local entries = FindEntries(section)
+            if section.group and section.getUnavailableReason then
+                for _, entry in ipairs(entries) do
+                    if select(3, GetState(entry)) then
+                        A.RefreshPresetOptions()
+                        return
+                    end
+                end
+            end
+            for _, entry in ipairs(entries) do SetEnabled(entry, enabled) end
         end
         A.RefreshPresetOptions()
     end)
     -- Reserve room for the label and optional Config button.
     section.check:SetPoint("RIGHT", section.reset, "LEFT", -110, 0)
     section.checkLabel:SetPoint("LEFT", section.check, "RIGHT", 1, 0)
-    if section.getUnavailableReason then section.unavailableTooltip = CreateUnavailableTooltip(section) end
+    if section.getUnavailableReason then section.unavailableTooltip = CreateUnavailableTooltip(frame, section.check, section.checkLabel) end
     section.mixed = section.check:CreateTexture(nil, "OVERLAY")
     section.mixed:SetColorTexture(.82, .82, .82, 1)
     section.mixed:SetSize(10, 2)
@@ -424,7 +437,7 @@ function A.RefreshPresetOptions()
         local columnWidth = (width - (columnCount - 1) * columnGutter) / columnCount
         local rowWidth = math.min(columnWidth, maxRowWidth)
         local sliderWidth = (width - 32) / 3
-        local enabled, eligible, resettable = 0, 0, 0
+        local enabled, eligible, resettable, blocked = 0, 0, 0, 0
         local values, mixed = {}, {}
         local advancedConfig, unavailableReason, likelySource, showConfigWarning
         section.status:SetText("")
@@ -459,11 +472,22 @@ function A.RefreshPresetOptions()
                 row.label:SetText(entry.title:gsub("|", "||"))
                 row.status:SetWidth(rowWidth - 32)
                 row.status:SetText(status)
-                row.check:SetChecked(state == "on" or state == "advanced")
+                row.check:SetChecked(state == "on" or state == "advanced" or state == "suspended")
                 row.check:SetEnabled(usable and (state == "on" or state == "off"))
                 row.check:SetTooltipFunc(state == "advanced" and ShowAdvancedConfigTooltip or nil)
                 row.config:SetEnabled(configurable)
                 row.reset:SetEnabled(usable and GetResetMode(entry, state, setting, true) ~= nil)
+                if row.unavailableTooltip then
+                    if reason then
+                        blocked = blocked + 1
+                        if blocked == 1 then unavailableReason = reason
+                        elseif unavailableReason ~= reason then unavailableReason = "See the blocked chat frames below for details" end
+                    end
+                    row.check:SetAlpha(reason and .55 or 1)
+                    row.label:SetAlpha(reason and .55 or 1)
+                    UpdateUnavailableTooltip(row.unavailableTooltip, row.label:GetText() .. " preset unavailable",
+                        reason, source, configurable and reason ~= nil)
+                end
                 row:Show()
             else
                 advancedConfig = state == "advanced"
@@ -480,25 +504,27 @@ function A.RefreshPresetOptions()
                 end
             end
         end
-        if section.group then section.check:SetChecked(eligible > 0 and enabled == eligible) end
-        local partiallyEnabled = section.group and enabled > 0 and enabled < eligible
+        if section.group then section.check:SetChecked(blocked == 0 and eligible > 0 and enabled == eligible) end
+        local partiallyEnabled = section.group and blocked == 0 and enabled > 0 and enabled < eligible
         section.mixed:SetShown(partiallyEnabled)
         section.check:SetTooltipFunc(advancedConfig and ShowAdvancedConfigTooltip
             or partiallyEnabled and ShowMixedPresetTooltip or nil)
-        local canToggle = usable and eligible > 0
+        local canToggle = usable and eligible > 0 and blocked == 0
         section.check:SetEnabled(canToggle)
         local tooltip = section.unavailableTooltip
-        if tooltip then
+        if tooltip and section.group then
+            section.check:SetAlpha(blocked > 0 and .55 or 1)
+            section.checkLabel:SetAlpha(blocked > 0 and .55 or 1)
+            local title = blocked == #entries and "All chat frames are blocked" or "Some chat frames are blocked"
+            UpdateUnavailableTooltip(tooltip, title, unavailableReason)
+        elseif tooltip then
             section.check:SetAlpha(canToggle and 1 or .55)
             section.checkLabel:SetAlpha(canToggle and 1 or .55)
-            tooltip.title = advancedConfig and advancedTitle or section.title .. " preset unavailable"
-            tooltip.reason = not canToggle and (unavailableReason
+            local title = advancedConfig and advancedTitle or section.title .. " preset unavailable"
+            local reason = not canToggle and (unavailableReason
                 or (locked and "Preset settings are unavailable during combat")
                 or "The frame is unavailable") or nil
-            tooltip.source = not canToggle and likelySource or nil
-            tooltip.showConfigWarning = showConfigWarning
-            tooltip:SetShown(tooltip.reason ~= nil)
-            if tooltip.reason and GameTooltip:IsOwned(tooltip) then ShowUnavailableTooltip(tooltip) end
+            UpdateUnavailableTooltip(tooltip, title, reason, not canToggle and likelySource or nil, showConfigWarning)
         end
         section.reset:SetEnabled(usable and resettable > 0)
         for i = #entries + 1, #section.rows do section.rows[i]:Hide() end
