@@ -4,7 +4,8 @@ A.UnitFramePresets = UnitFrames
 
 local records = setmetatable({}, {__mode = "k"})
 local alphaTolerance = .001
-local alphaConflict = "Another addon may be controlling this frame's transparency"
+local playerTransparencyConflict = "Another addon may be controlling player frame transparency"
+local targetTransparencyConflict = "Another addon may be controlling target frame transparency"
 local refreshQueued
 
 local function IsPublic(value)
@@ -64,19 +65,20 @@ end
 
 function UnitFrames.GetUnavailableReason(region)
     if not UnitFrames.Handles(region) then return "The Blizzard frame is unavailable" end
+    local transparencyConflict = region == PlayerFrame and playerTransparencyConflict or targetTransparencyConflict
     local state = Observe(region)
     local parent = KongKontinued_GetFrameParent(region)
     while parent and parent ~= UIParent and parent ~= WorldFrame do
         local shown = parent:IsShown()
         if IsPublic(shown) and not shown then
-            return "The Blizzard frame is under a hidden parent", parent == state.parent and state.parentSource or nil
+            return transparencyConflict, parent == state.parent and state.parentSource or nil
         end
         local alpha = ReadAlpha(parent)
-        if alpha and alpha < 1 - alphaTolerance then return "The frame's parent is already faded" end
+        if alpha and alpha < 1 - alphaTolerance then return transparencyConflict end
         parent = KongKontinued_GetFrameParent(parent)
     end
 
-    if state.externalAlpha then return alphaConflict, state.alphaSource end
+    if state.externalAlpha then return transparencyConflict, state.alphaSource end
     local alpha = ReadAlpha(region)
     if not alpha then return "Kong can't read the frame's opacity" end
     if state.lastAlpha then
@@ -84,10 +86,10 @@ function UnitFrames.GetUnavailableReason(region)
         if math.abs(alpha - state.lastAlpha) > alphaTolerance then
             state.externalAlpha = true
             QueueRefresh()
-            return alphaConflict
+            return transparencyConflict
         end
     elseif alpha < 1 - alphaTolerance then
-        return "The Blizzard frame is already faded"
+        return transparencyConflict
     end
 end
 

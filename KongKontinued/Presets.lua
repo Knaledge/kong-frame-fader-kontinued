@@ -16,14 +16,15 @@ local nativeBars = {
     {"MultiBar6", "Action Bar 7", "MultiBar6_IsVisible"},
     {"MultiBar7", "Action Bar 8", "MultiBar7_IsVisible"},
 }
+local actionBarSection = {title = "Action Bars", group = true}
 local sections = {
-    {title = "Action Bars", group = true},
-    {title = "Minimap", global = "Minimap", getUnavailableReason = A.MinimapPreset.GetUnavailableReason},
     {title = "Objective Tracker", global = "ObjectiveTrackerFrame"},
-    {title = "Chat Frames", group = true},
+    {title = "Minimap", global = "Minimap", getUnavailableReason = A.MinimapPreset.GetUnavailableReason},
+    {title = "Player", global = "PlayerFrame", getUnavailableReason = A.UnitFramePresets.GetUnavailableReason},
+    {title = "Target", global = "TargetFrame", getUnavailableReason = A.UnitFramePresets.GetUnavailableReason},
     {title = "Player Buffs", global = "BuffFrame"},
-    {title = "Player Frame", global = "PlayerFrame", getUnavailableReason = A.UnitFramePresets.GetUnavailableReason},
-    {title = "Target Frame", global = "TargetFrame", getUnavailableReason = A.UnitFramePresets.GetUnavailableReason},
+    actionBarSection,
+    {title = "Chat Frames", group = true},
 }
 local panel, body, intro, enableFading, enableFadingLabel, advanced, refreshing
 
@@ -40,7 +41,7 @@ local function FindEntries(section)
     if section.global then
         entries[1] = {name = section.global, title = section.title, region = _G[section.global],
             getUnavailableReason = section.getUnavailableReason}
-    elseif section == sections[1] then
+    elseif section == actionBarSection then
         for _, bar in ipairs(nativeBars) do
             local name, title, predicate = unpack(bar)
             local region = _G[name]
@@ -353,17 +354,14 @@ local function CreateSection(section)
     section.titleLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -5)
     section.reset = CreateButton(frame, "Reset", function() RequestReset(section) end)
     section.reset:SetPoint("TOPRIGHT", frame, "TOPRIGHT")
-    local last = section.reset
     if not section.group then
         section.config = CreateButton(frame, "Config", function()
             local entry = FindEntries(section)[1]
             if entry then A.ShowAdvancedConfig(entry.region) end
         end)
-        section.config:SetPoint("RIGHT", last, "LEFT", -4, 0)
-        last = section.config
+        section.config:SetPoint("RIGHT", section.reset, "LEFT", -4, 0)
     end
     section.checkLabel = CreateLabel(frame, section.group and "All" or "Enable", "GameFontHighlightSmall")
-    section.checkLabel:SetPoint("RIGHT", last, "LEFT", -8, 0)
     section.check = CreateCheckbox(frame, function(check)
         local enabled = section.mixed:IsShown() or check:GetChecked()
         if A.CanModifyProfiles() then
@@ -371,7 +369,9 @@ local function CreateSection(section)
         end
         A.RefreshPresetOptions()
     end)
-    section.check:SetPoint("RIGHT", section.checkLabel, "LEFT", -1, 0)
+    -- Reserve room for the label and optional Config button.
+    section.check:SetPoint("RIGHT", section.reset, "LEFT", -110, 0)
+    section.checkLabel:SetPoint("LEFT", section.check, "RIGHT", 1, 0)
     if section.getUnavailableReason then section.unavailableTooltip = CreateUnavailableTooltip(section) end
     section.mixed = section.check:CreateTexture(nil, "OVERLAY")
     section.mixed:SetColorTexture(.82, .82, .82, 1)
