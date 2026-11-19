@@ -9,6 +9,9 @@ Retail 12.1.5 and WoW Forever 1.60.1.
 
 ## Features
 
+- Enable ready-made fades for the objective tracker, minimap, player and
+  target frames, player buffs, action bars and chat frames
+- Adjust idle, mouseover and combat opacity from native WoW Options
 - Select UI frames with an in-game frame picker
 - Set fade-in and fade-out opacity, timing and fade-out delay
 - Reveal frames on mouseover or when configured conditions are met
@@ -27,16 +30,28 @@ this addon.
 ## Getting started
 
 Open **Settings > AddOns > Kong Frame Fader Kontinued**, or use `/kong`.
-Enable the addon for your character and select or create a profile.
+Check **Enable UI fading** for your character. Use the **Profile** subpage
+to select, create, copy, import or reset a profile.
 
-Choose **Advanced Config** to open the frame picker and rule editor.
-Select a frame, enable **Hide Selected Frame(s)**, then adjust its fade
-settings and **Show When** conditions. Use groups when several frames
-should respond together.
+Presets are off by default and use the selected profile. Check **Enable**
+for a preset, or select individual action bars or chat frames. Use **All**
+when available to toggle eligible frames in a group at once. Adjust **Idle**,
+**Mouseover** and **Combat** to set opacity in each state. Turning off a
+preset removes its preset rules from the selected profile.
 
-The configuration companion loads only when opening Advanced Config or
-importing profiles. Native Options provides profile controls without
-loading the editor. Configuration changes through Options are unavailable
+Use **Config** to edit a frame in Advanced Config. If advanced rules or
+another addon limit a preset, hover over its controls for details. Use
+**Reset** where available to replace the frame's settings with preset
+defaults. The confirmation describes any affected mouseover groups or
+whether the preset will stay disabled after clearing its settings.
+
+Choose **Advanced Config** at the top of Options to open the frame picker
+and build rules from scratch. Select a frame, enable **Hide Selected
+Frame(s)**, then adjust its fade settings and **Show When** conditions.
+Use groups when several frames should respond together.
+
+The configuration companion loads on demand for Advanced Config and
+profile import. Configuration changes through Options are unavailable
 during combat.
 
 ## Commands
