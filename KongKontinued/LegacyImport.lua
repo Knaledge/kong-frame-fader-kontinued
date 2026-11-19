@@ -286,7 +286,7 @@ local function condition(source, definitions, expected, report, depth)
     return out
 end
 
-local function profile(source, definitions, report)
+local function profile(source, definitions, report, copyPresets)
     expect(type(source) == "table", "Each legacy profile must be a table")
     for key in pairs(source) do expect(key == "Frames" or key == "Groups" or key == "version", "Unsupported profile field: " .. tostring(key)) end
     expect(source.Frames == nil or type(source.Frames) == "table", "Profile frames must be a table")
@@ -307,6 +307,8 @@ local function profile(source, definitions, report)
                 expect(key >= 1 and key % 1 == 0, "Invalid trigger index")
             elseif key == "overrideAlpha" or key == "hideAtZeroAlpha" then
                 expect(type(value) == "boolean", key .. " must be a boolean"); frame[key] = value
+            elseif key == "preset" and copyPresets then
+                expect(value == true, "Invalid frame preset marker"); frame.preset = true
             else
                 expect(key == "index" or key == "version" or key == "TriggerDefaults" or transient[key], "Unsupported frame field: " .. tostring(key))
             end
@@ -348,7 +350,7 @@ end
 
 -- Reuse the data-only validation/copy path for native profile operations.
 function Import.CopyProfile(source, definitions)
-    local ok, result = pcall(profile, source, definitions, {frames = 0, conditions = 0})
+    local ok, result = pcall(profile, source, definitions, {frames = 0, conditions = 0}, true)
     if ok then return result end
     return nil, tostring(result)
 end

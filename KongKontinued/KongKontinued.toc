@@ -17,4 +17,8 @@ classes\ObjectPool.lua
 LegacyImport.lua
 KongKontinued.lua
 CommandLine.lua
+AddonAttribution.lua
+MinimapPreset.lua
+FramePresetTransparency.lua
+Presets.lua
 Options.lua

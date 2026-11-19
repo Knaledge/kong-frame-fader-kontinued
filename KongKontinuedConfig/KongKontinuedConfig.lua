@@ -86,11 +86,11 @@ local function IsPublic(value)
     return not (issecretvalue and issecretvalue(value))
 end
 
-local function GetPickerGeometry(Frame)
+local function GetPickerGeometry(Frame, allowHidden)
     if InCombatLockdown() or not KongKontinued_CanAccessFrame(Frame) then return end
     local restricted = Frame:IsAnchoringRestricted()
     local shown = Frame:IsShown()
-    if not IsPublic(restricted) or restricted or not IsPublic(shown) or not shown then return end
+    if not IsPublic(restricted) or restricted or not IsPublic(shown) or (not shown and not allowHidden) then return end
     local width, height = Frame:GetWidth(), Frame:GetHeight()
     if not IsPublic(width) or not IsPublic(height) or type(width) ~= "number" or type(height) ~= "number" then return end
     return width, height
@@ -105,7 +105,7 @@ CombatWatcher:SetScript("OnEvent", function()
     end
 end)
 
-function KongKontinuedConfig_Show()
+function KongKontinuedConfig_Show(region)
 
     if InCombatLockdown() then
         KongKontinued_Warning("Advanced Config cannot be opened during combat")
@@ -154,6 +154,21 @@ function KongKontinuedConfig_Show()
             KongKontinuedConfig_SelectedFrames[PreviouslySelectedFrame] = nil
         end
     end
+
+    if region then
+        for cover in pairs(KongKontinuedConfig_SelectedFrames) do
+            KongKontinuedConfig_SelectedFrames[cover] = nil
+            KongKontinuedConfig_CoverButton_Update(cover)
+        end
+        local cover = KongKontinuedConfig_CreateCoverButton(region, true)
+        if cover then
+            KongKontinuedConfig_SelectedFrames[cover] = cover
+            KongKontinuedConfig_CoverButton_Update(cover)
+            if not region:IsShown() then cover:Hide() end
+        else
+            KongKontinuedConfig:SetStatusText("This frame is currently unavailable in the picker.")
+        end
+    end
     
     -- Make sure the config frame is on top
     KongKontinuedConfig.frame:SetFrameStrata("DIALOG")
@@ -161,6 +176,9 @@ function KongKontinuedConfig_Show()
     
     -- Update the config widgets' states
     KongKontinuedConfig_UpdateComponents()
+    if region then
+        KongKontinuedConfig_AutoExpandAndCollapse(next(KongKontinuedConfig_SelectedFrames) ~= nil)
+    end
     
 end
 
@@ -172,9 +190,9 @@ function KongKontinuedConfig_CreateChildCoverButtons(Frame)
     end
 end
 
-function KongKontinuedConfig_CreateCoverButton(Frame)
+function KongKontinuedConfig_CreateCoverButton(Frame, allowHidden)
 
-    local width, height = GetPickerGeometry(Frame)
+    local width, height = GetPickerGeometry(Frame, allowHidden)
     if not width then
         local cover = KongKontinuedConfig_Frames[Frame]
         if cover then cover:Hide(); KongKontinuedConfig_SelectedFrames[cover] = nil end
@@ -235,6 +253,7 @@ function KongKontinuedConfig_CreateCoverButton(Frame)
     end
     KongKontinuedConfig_Frames[Frame]:SetPoint("TOPLEFT", Frame, "TOPLEFT", -xoff, yoff)
     KongKontinuedConfig_Frames[Frame]:SetPoint("BOTTOMRIGHT", Frame, "BOTTOMRIGHT", xoff, -yoff)
+    return KongKontinuedConfig_Frames[Frame]
 end
 
 function KongKontinuedConfig_OnClose()
@@ -755,7 +774,7 @@ function KongKontinuedConfig_CoverButton_OnClick(self, button)
 end
 
 -- GUI Update --------------------------------------------------------------------------------------
-function KongKontinuedConfig_AutoExpandAndCollapse()
+function KongKontinuedConfig_AutoExpandAndCollapse(expandAdvanced)
 
     KongKontinuedConfig_ConditionsCategoryGroup:SetCollapsed(KongKontinuedConfig_FadeCheckBox:GetValue() == false)
 
@@ -769,7 +788,7 @@ function KongKontinuedConfig_AutoExpandAndCollapse()
             end
         end
     end
-    if hasAdvancedSettings then
+    if expandAdvanced or hasAdvancedSettings then
         KongKontinuedConfig_AdvancedGroup:SetCollapsed(false)
     end
 end
@@ -828,11 +847,11 @@ function KongKontinuedConfig_OnUpdate(self, elapsed)
     if showTip then
         GameTooltip:SetOwner(KongKontinuedConfig.frame, "ANCHOR_CURSOR")
         if (numUnderCursor > 0) and numSelected == 0 then
-            GameTooltip:AddLine("Click to configure.")
+            GameTooltip:AddLine("Click to configure.", 1, 1, 1)
         elseif (numUnderCursor > 0) and unselectedUnderCursor then
-            GameTooltip:AddLine("Shift-click to select multiple widgets.")
+            GameTooltip:AddLine("Shift-click to select multiple widgets.", 1, 1, 1)
         elseif numUnderCursor > 1 then
-            GameTooltip:AddLine("Use the mouse wheel to uncover widgets.")
+            GameTooltip:AddLine("Use the mouse wheel to uncover widgets.", 1, 1, 1)
         end
     elseif GameTooltip:IsOwned(KongKontinuedConfig.frame) then
         GameTooltip:Hide()
@@ -1025,7 +1044,20 @@ function KongKontinuedConfig_UpdateComponents()
 end
 
 function KongKontinuedConfig_UpdateConditions()
-    
+    -- A preset reset can deflate conditions while their panels are cached.
+    -- Drop them from both the panel and the editor before either compares them.
+    for _, Panel in ipairs(KongKontinuedConfig_ConditionsGroup.children) do
+        local Triggers = Panel:GetUserData("Triggers")
+        local Editor = Panel:GetUserData("ConditionEditor")
+        for i = #Triggers, 1, -1 do
+            local Condition = Triggers[i].Condition
+            if not Condition.Equals then
+                Editor:RemoveCondition(Condition)
+                tremove(Triggers, i)
+            end
+        end
+    end
+
     -- Check for new conditions in each selected frame
     for Frame in pairs(KongKontinuedConfig_SelectedFrames) do
         -- If registered
@@ -1037,7 +1069,7 @@ function KongKontinuedConfig_UpdateConditions()
                 for i, TriggerPanel in ipairs(KongKontinuedConfig_ConditionsGroup.children) do
                     local GUITrigger = TriggerPanel:GetUserData("Triggers")[1]
                     -- If the triggers have the same structure
-                    if GUITrigger.Condition:Equals(FrameTrigger.Condition) then
+                    if GUITrigger and GUITrigger.Condition:Equals(FrameTrigger.Condition) then
                         local duplicate = false
                         -- Check if the trigger is already being configured by the panel
                         for _, GUITrigger in ipairs(TriggerPanel:GetUserData("Triggers")) do
@@ -1105,6 +1137,10 @@ function KongKontinuedConfig_UpdateConditions()
         
         -- Remove the panel if all its triggers were removed
         if #PanelTriggers == 0 then
+            if Panel:GetUserData("MouseoverText") then
+                -- Mouseover uses a text title, so the panel doesn't own this editor.
+                AceGUI:Release(Panel:GetUserData("ConditionEditor"))
+            end
             AceGUI:Release(tremove(KongKontinuedConfig_ConditionsGroup.children, i))
             KongKontinuedConfig_ScrollFrame:DoLayout()
         else
@@ -1523,10 +1559,10 @@ function KongKontinuedConfig_UpdateTooltip(self, event)
     if event == "OnEnter" then
         GameTooltip:SetOwner(self:GetUserData(OWNER) or self.frame, 
             self:GetUserData(ANCHOR) or "ANCHOR_TOP")
-        GameTooltip:AddLine(self:GetUserData(TITLE) or self.text:GetText())
+        GameTooltip:AddLine(self:GetUserData(TITLE) or self.text:GetText(), NORMAL_FONT_COLOR:GetRGB())
         
         GameTooltip:AddLine(self:GetUserData(TOOLTIP) or 
-            self:GetUserData(TOOLTIP..self:GetUserData(TRIGGER)), 1,1,1,1,1)
+            self:GetUserData(TOOLTIP..self:GetUserData(TRIGGER)), 1, 1, 1, true)
         
         GameTooltip:Show()
     else
