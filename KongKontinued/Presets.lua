@@ -152,8 +152,8 @@ local function SetOpacity(section, index, alpha)
     A.RefreshPresetOptions()
 end
 
-local function IsResettable(state, setting)
-    return setting ~= nil and setting.preset == true and (state == "on" or state == "advanced")
+local function IsResettable(state, setting, individual)
+    return setting ~= nil and (individual or setting.preset == true) and (state == "on" or state == "advanced")
 end
 
 local function ResetEntries(request)
@@ -164,7 +164,8 @@ local function ResetEntries(request)
     for _, candidate in ipairs(request.entries) do
         local entry = candidate.entry
         local state, setting = GetState(entry)
-        if not listed[entry.region] or setting ~= candidate.setting or not IsResettable(state, setting) then return end
+        if not listed[entry.region] or setting ~= candidate.setting
+            or not IsResettable(state, setting, request.individual) then return end
     end
     for _, candidate in ipairs(request.entries) do
         local entry = candidate.entry
@@ -188,10 +189,15 @@ StaticPopupDialogs[RESET_DIALOG] = {
 
 local function RequestReset(section, entry)
     if not A.CanModifyProfiles() then return end
-    local request = {section = section, entries = {}, profile = A.CurrentProfileTarget()}
+    local request = {
+        section = section,
+        entries = {},
+        profile = A.CurrentProfileTarget(),
+        individual = entry ~= nil or not section.group,
+    }
     for _, candidate in ipairs(entry and {entry} or FindEntries(section)) do
         local state, setting = GetState(candidate)
-        if IsResettable(state, setting) then
+        if IsResettable(state, setting, request.individual) then
             table.insert(request.entries, {entry = candidate, setting = setting})
         end
     end
@@ -368,8 +374,7 @@ function A.RefreshPresetOptions()
         for i, entry in ipairs(entries) do
             local state, setting = GetState(entry)
             if state == "on" or state == "off" then eligible = eligible + 1 end
-            local canReset = IsResettable(state, setting)
-            if canReset then resettable = resettable + 1 end
+            if IsResettable(state, setting, not section.group) then resettable = resettable + 1 end
             if state == "on" then
                 enabled = enabled + 1
                 local idle, hover, combat = GetValues(setting)
@@ -399,7 +404,7 @@ function A.RefreshPresetOptions()
                 row.check:SetEnabled(usable and (state == "on" or state == "off"))
                 row.check:SetTooltipFunc(state == "advanced" and ShowAdvancedConfigTooltip or nil)
                 row.config:SetEnabled(configurable)
-                row.reset:SetEnabled(usable and canReset)
+                row.reset:SetEnabled(usable and IsResettable(state, setting, true))
                 row:Show()
             else
                 advancedConfig = state == "advanced"
