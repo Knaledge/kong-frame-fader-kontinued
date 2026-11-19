@@ -157,8 +157,9 @@ local function OnClick(Editor, key, text, button)
                 local overrideString = Param:GetMenuOverrideString()
                 local item = self.Dropdown:AddItem(name, 
                     DEFAULT_COLOR..Param.type..":|r "..(overrideString or name), CategoryMenus[Param.category])
-                item.tooltipTitle = DEFAULT_COLOR..Param.type..":|r "..(overrideString or name)
-                item.tooltipText = WrapDescription(Param:GetDescription())
+                item.tooltipTitle = DEFAULT_COLOR..Param.type..":|r "..NORMAL_FONT_COLOR:WrapTextInColorCode(overrideString or name)
+                local description = WrapDescription(Param:GetDescription())
+                item.tooltipText = description and HIGHLIGHT_FONT_COLOR:WrapTextInColorCode(description)
                 item.tooltipOnButton = 1
             end
         end
@@ -198,14 +199,13 @@ local function OnEnter(Editor, key, text)
     
     GameTooltip:SetOwner(self.frame, "ANCHOR_TOP")
     local valid, msg = IsParameterValid(Param)
+    local title = DEFAULT_COLOR..Param.type..":|r "..Param.name
     if valid and IsModifierKeyDown() then
-        GameTooltip:AddDoubleLine(DEFAULT_COLOR..Param.type..":|r "..Param.name,
-            ParamValueToString(Param), 1,1,1)
-        GameTooltip:AddLine(Param:GetDescription(), nil, nil, nil, true)
+        GameTooltip:AddDoubleLine(title, ParamValueToString(Param), NORMAL_FONT_COLOR:GetRGB())
     else
-        GameTooltip:AddLine(DEFAULT_COLOR..Param.type..":|r "..Param.name, 1,1,1)
-        GameTooltip:AddLine(Param:GetDescription(), nil, nil, nil, true)
+        GameTooltip:AddLine(title, NORMAL_FONT_COLOR:GetRGB())
     end
+    GameTooltip:AddLine(Param:GetDescription(), 1, 1, 1, true)
     if (not valid) or IsModifierKeyDown() then
         if not valid then
             GameTooltip:AddLine("Error: "..msg, 1,0,0,1)

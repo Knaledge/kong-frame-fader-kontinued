@@ -281,20 +281,24 @@ local function CreateCheckbox(parent, onClick)
     return checkbox
 end
 
+function A.SetTooltipText(tooltip, title, description)
+    tooltip:SetText(title, NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b)
+    tooltip:AddLine(description, 1, 1, 1, true)
+end
+
 local function ShowAdvancedConfigTooltip()
-    Settings.InitTooltip(advancedTitle, advancedTooltip)
+    A.SetTooltipText(SettingsTooltip, advancedTitle, advancedTooltip)
 end
 
 local function ShowMixedPresetTooltip()
-    Settings.InitTooltip("Some presets enabled",
+    A.SetTooltipText(SettingsTooltip, "Some presets enabled",
         "Some presets in this section are enabled. Select 'All' to enable the remaining available presets")
 end
 
 local function ShowUnavailableTooltip(frame)
     if not frame.reason then return end
     GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
-    GameTooltip:SetText(frame.title)
-    GameTooltip:AddLine(frame.reason, 1, 1, 1, true)
+    A.SetTooltipText(GameTooltip, frame.title, frame.reason)
     if frame.source then GameTooltip:AddLine("Likely source: " .. frame.source, .75, .75, .75, true) end
     if frame.showConfigWarning then
         if frame.source then GameTooltip:AddLine(" ") end
@@ -571,7 +575,7 @@ function A.CreatePresetOptions(title)
         A.RefreshPresetOptions()
     end)
     enableFading:SetTooltipFunc(function()
-        Settings.InitTooltip("Enable UI fading", "Enable fading for this character using the selected profile")
+        A.SetTooltipText(SettingsTooltip, "Enable UI fading", "Enable fading for this character using the selected profile")
     end)
     enableFading:SetPoint("TOPLEFT", body, "TOPLEFT", 8, -5)
     enableFadingLabel = CreateLabel(body, "Enable UI fading")

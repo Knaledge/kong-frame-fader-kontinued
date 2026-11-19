@@ -847,11 +847,11 @@ function KongKontinuedConfig_OnUpdate(self, elapsed)
     if showTip then
         GameTooltip:SetOwner(KongKontinuedConfig.frame, "ANCHOR_CURSOR")
         if (numUnderCursor > 0) and numSelected == 0 then
-            GameTooltip:AddLine("Click to configure.")
+            GameTooltip:AddLine("Click to configure.", 1, 1, 1)
         elseif (numUnderCursor > 0) and unselectedUnderCursor then
-            GameTooltip:AddLine("Shift-click to select multiple widgets.")
+            GameTooltip:AddLine("Shift-click to select multiple widgets.", 1, 1, 1)
         elseif numUnderCursor > 1 then
-            GameTooltip:AddLine("Use the mouse wheel to uncover widgets.")
+            GameTooltip:AddLine("Use the mouse wheel to uncover widgets.", 1, 1, 1)
         end
     elseif GameTooltip:IsOwned(KongKontinuedConfig.frame) then
         GameTooltip:Hide()
@@ -1559,10 +1559,10 @@ function KongKontinuedConfig_UpdateTooltip(self, event)
     if event == "OnEnter" then
         GameTooltip:SetOwner(self:GetUserData(OWNER) or self.frame, 
             self:GetUserData(ANCHOR) or "ANCHOR_TOP")
-        GameTooltip:AddLine(self:GetUserData(TITLE) or self.text:GetText())
+        GameTooltip:AddLine(self:GetUserData(TITLE) or self.text:GetText(), NORMAL_FONT_COLOR:GetRGB())
         
         GameTooltip:AddLine(self:GetUserData(TOOLTIP) or 
-            self:GetUserData(TOOLTIP..self:GetUserData(TRIGGER)), 1,1,1,1,1)
+            self:GetUserData(TOOLTIP..self:GetUserData(TRIGGER)), 1, 1, 1, true)
         
         GameTooltip:Show()
     else

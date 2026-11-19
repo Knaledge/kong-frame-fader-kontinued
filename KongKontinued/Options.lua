@@ -77,6 +77,17 @@ local function ConfigureInitializer(initializer)
     initializer:AddModifyPredicate(CanModifyOptions)
     initializer:AddEvaluateStateFrameEvent("PLAYER_REGEN_DISABLED")
     initializer:AddEvaluateStateFrameEvent("PLAYER_REGEN_ENABLED")
+
+    local function ShowTooltip()
+        A.SetTooltipText(SettingsTooltip, initializer:GetName(), initializer:GetTooltip())
+    end
+
+    -- The Settings list reuses frames for scrolling and search results.
+    hooksecurefunc(initializer, "InitFrame", function(_, row)
+        row:SetTooltipFunc(ShowTooltip)
+        local control = row.Button or row.Control.Dropdown
+        control:SetTooltipFunc(ShowTooltip)
+    end)
 end
 
 local function GetProfileOptions(copyFrom)
