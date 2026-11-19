@@ -1044,7 +1044,20 @@ function KongKontinuedConfig_UpdateComponents()
 end
 
 function KongKontinuedConfig_UpdateConditions()
-    
+    -- A preset reset can deflate conditions while their panels are cached.
+    -- Drop them from both the panel and the editor before either compares them.
+    for _, Panel in ipairs(KongKontinuedConfig_ConditionsGroup.children) do
+        local Triggers = Panel:GetUserData("Triggers")
+        local Editor = Panel:GetUserData("ConditionEditor")
+        for i = #Triggers, 1, -1 do
+            local Condition = Triggers[i].Condition
+            if not Condition.Equals then
+                Editor:RemoveCondition(Condition)
+                tremove(Triggers, i)
+            end
+        end
+    end
+
     -- Check for new conditions in each selected frame
     for Frame in pairs(KongKontinuedConfig_SelectedFrames) do
         -- If registered
@@ -1056,7 +1069,7 @@ function KongKontinuedConfig_UpdateConditions()
                 for i, TriggerPanel in ipairs(KongKontinuedConfig_ConditionsGroup.children) do
                     local GUITrigger = TriggerPanel:GetUserData("Triggers")[1]
                     -- If the triggers have the same structure
-                    if GUITrigger.Condition:Equals(FrameTrigger.Condition) then
+                    if GUITrigger and GUITrigger.Condition:Equals(FrameTrigger.Condition) then
                         local duplicate = false
                         -- Check if the trigger is already being configured by the panel
                         for _, GUITrigger in ipairs(TriggerPanel:GetUserData("Triggers")) do
@@ -1124,6 +1137,10 @@ function KongKontinuedConfig_UpdateConditions()
         
         -- Remove the panel if all its triggers were removed
         if #PanelTriggers == 0 then
+            if Panel:GetUserData("MouseoverText") then
+                -- Mouseover uses a text title, so the panel doesn't own this editor.
+                AceGUI:Release(Panel:GetUserData("ConditionEditor"))
+            end
             AceGUI:Release(tremove(KongKontinuedConfig_ConditionsGroup.children, i))
             KongKontinuedConfig_ScrollFrame:DoLayout()
         else
