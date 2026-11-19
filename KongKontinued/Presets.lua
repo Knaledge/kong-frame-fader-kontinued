@@ -156,6 +156,28 @@ local function IsResettable(state, setting, individual)
     return setting ~= nil and (individual or setting.preset == true) and (state == "on" or state == "advanced")
 end
 
+local function GetResetGroupImpact(entries)
+    local selected = {}
+    for _, candidate in ipairs(entries) do
+        selected[candidate.setting.index] = true
+    end
+
+    local memberships, emptiedGroups = 0, 0
+    for _, group in pairs(KongKontinued_Settings.Groups) do
+        local removed, hasRemainingMember = 0, false
+        for index in pairs(group) do
+            if selected[index] then
+                removed = removed + 1
+            else
+                hasRemainingMember = true
+            end
+        end
+        memberships = memberships + removed
+        if removed > 0 and not hasRemainingMember then emptiedGroups = emptiedGroups + 1 end
+    end
+    return memberships, emptiedGroups
+end
+
 local function ResetEntries(request)
     if not panel:IsVisible() or not A.CanModifyProfiles() or not A.IsCurrentProfileTarget(request.profile) then return end
     local current = FindEntries(request.section)
@@ -167,6 +189,11 @@ local function ResetEntries(request)
         if not listed[entry.region] or setting ~= candidate.setting
             or not IsResettable(state, setting, request.individual) then return end
     end
+    local memberships, emptiedGroups = GetResetGroupImpact(request.entries)
+    if memberships ~= request.memberships or emptiedGroups ~= request.emptiedGroups then
+        KongKontinued_Warning("Mouseover groups changed. Open Reset again to review the changes.")
+        return
+    end
     for _, candidate in ipairs(request.entries) do
         local entry = candidate.entry
         local region = entry.region
@@ -177,7 +204,7 @@ local function ResetEntries(request)
 end
 
 StaticPopupDialogs[RESET_DIALOG] = {
-    text = "Reset %s to preset defaults? This replaces the selected frames' settings in the current profile.",
+    text = "Reset %s to preset defaults? This replaces the selected frames' settings in the current profile.%s",
     button1 = "Reset",
     button2 = CANCEL,
     OnAccept = function(_, request) ResetEntries(request) end,
@@ -202,7 +229,15 @@ local function RequestReset(section, entry)
         end
     end
     if #request.entries > 0 then
-        StaticPopup_Show(RESET_DIALOG, entry and entry.title or section.title, nil, request)
+        request.memberships, request.emptiedGroups = GetResetGroupImpact(request.entries)
+        local groupWarning = ""
+        if request.memberships > 0 then
+            groupWarning = "\n\nThe selected frames will also be removed from their mouseover groups."
+            if request.emptiedGroups > 0 then
+                groupWarning = groupWarning .. " Groups that lose their last member will be deleted."
+            end
+        end
+        StaticPopup_Show(RESET_DIALOG, entry and entry.title or section.title, groupWarning, request)
     end
 end
 
