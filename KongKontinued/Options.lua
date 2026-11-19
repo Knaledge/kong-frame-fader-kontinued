@@ -2,6 +2,8 @@ local N, A = ...
 local category, profileCategory, profileSetting, copySetting
 local copyInitializer
 local defaultsHiddenForKong = false
+local profileTooltips = {}
+local hookedDropdownRows = setmetatable({}, {__mode = "k"})
 
 BINDING_NAME_KONGKONTINUED_CONFIG = "Open Options"
 
@@ -73,6 +75,11 @@ function A.ShowOptions()
     Settings.OpenToCategory(category:GetID())
 end
 
+local function ApplyProfileDropdownTooltip(row)
+    local showTooltip = profileTooltips[row:GetElementData()]
+    if showTooltip then row.Control.Dropdown:SetTooltipFunc(showTooltip) end
+end
+
 local function ConfigureInitializer(initializer)
     initializer:AddModifyPredicate(CanModifyOptions)
     initializer:AddEvaluateStateFrameEvent("PLAYER_REGEN_DISABLED")
@@ -81,12 +88,21 @@ local function ConfigureInitializer(initializer)
     local function ShowTooltip()
         A.SetTooltipText(SettingsTooltip, initializer:GetName(), initializer:GetTooltip())
     end
+    profileTooltips[initializer] = ShowTooltip
 
     -- The Settings list reuses frames for scrolling and search results.
     hooksecurefunc(initializer, "InitFrame", function(_, row)
         row:SetTooltipFunc(ShowTooltip)
-        local control = row.Button or row.Control.Dropdown
-        control:SetTooltipFunc(ShowTooltip)
+        if row.Button then
+            row.Button:SetTooltipFunc(ShowTooltip)
+        else
+            ApplyProfileDropdownTooltip(row)
+            -- Blizzard also replaces the tooltip when rebuilding the dropdown in place.
+            if not hookedDropdownRows[row] then
+                hooksecurefunc(row, "InitDropdown", ApplyProfileDropdownTooltip)
+                hookedDropdownRows[row] = true
+            end
+        end
     end)
 end
 
