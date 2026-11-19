@@ -1,6 +1,7 @@
-local addonName, A = ...
+local _, A = ...
 local Transparency = {}
 A.FramePresetTransparency = Transparency
+local Attribution = A.AddonAttribution
 
 local records = setmetatable({}, {__mode = "k"})
 local chatFrames = setmetatable({}, {__mode = "k"})
@@ -20,15 +21,6 @@ local function ReadAlpha(region)
     if type(region.GetAlpha) ~= "function" then return end
     local ok, alpha = pcall(region.GetAlpha, region)
     if ok and IsPublic(alpha) and type(alpha) == "number" and alpha >= 0 and alpha <= 1 then return alpha end
-end
-
-local function LikelySource()
-    if not debugstack then return end
-    local stack = debugstack(3, 10, 0):gsub("\\", "/")
-    for name in stack:gmatch("[Aa][Dd][Dd][Oo][Nn][Ss]/([^/\r\n]+)/") do
-        if name ~= addonName and name ~= addonName .. "Config" and not name:match("^Blizzard_")
-            and name:match("^[%w_. %-]+$") then return name end
-    end
 end
 
 function Transparency.TrackChatFrame(region)
@@ -70,7 +62,7 @@ local function GetChatTextConflict(region)
         if hooksecurefunc and type(container.SetAlpha) == "function" then
             pcall(hooksecurefunc, container, "SetAlpha", function(self)
                 local alpha = ReadAlpha(self)
-                local source = alpha and alpha < 1 - alphaTolerance and LikelySource() or nil
+                local source = alpha and alpha < 1 - alphaTolerance and Attribution.FromStack() or nil
                 if alpha ~= state.alpha or source ~= state.source then
                     state.alpha, state.source = alpha, source
                     QueueRefresh()
@@ -94,13 +86,13 @@ local function Observe(region)
             if state.writing or state.externalAlpha then return end
             local alpha = ReadAlpha(self)
             if alpha and math.abs(alpha - (state.lastAlpha or 1)) > alphaTolerance then
-                state.externalAlpha, state.alphaSource = true, LikelySource()
+                state.externalAlpha, state.alphaSource = true, Attribution.FromStack()
                 QueueRefresh()
             end
         end)
         pcall(hooksecurefunc, region, "SetParent", function(self)
             state.parent = KongKontinued_GetFrameParent(self)
-            state.parentSource = LikelySource()
+            state.parentSource = Attribution.FromStack()
             QueueRefresh()
         end)
     end

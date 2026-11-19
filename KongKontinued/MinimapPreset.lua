@@ -1,6 +1,7 @@
 local N, A = ...
 local Preset = {}
 A.MinimapPreset = Preset
+local Attribution = A.AddonAttribution
 
 local roundMask = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local maskPattern = "Interface\\AddOns\\" .. N .. "\\Textures\\PresetMinimap\\%03d.tga"
@@ -18,23 +19,11 @@ local function IsPublic(value)
     return not (issecretvalue and issecretvalue(value))
 end
 
-local function IsAddonName(name)
-    return type(name) == "string" and name ~= N and not name:match("^Blizzard_") and name:match("^[%w_. %-]+$")
-end
-
 local function ReadOpacity(region)
     local getAlpha = region.GetEffectiveAlpha or region.GetAlpha
     if type(getAlpha) ~= "function" then return end
     local ok, alpha = pcall(getAlpha, region)
     if ok and IsPublic(alpha) and type(alpha) == "number" and alpha >= 0 and alpha <= 1 then return alpha end
-end
-
-local function LikelySource()
-    if not debugstack then return end
-    local stack = debugstack(3, 10, 0):gsub("\\", "/")
-    for folder in stack:gmatch("[Aa][Dd][Dd][Oo][Nn][Ss]/([^/\r\n]+)/") do
-        if IsAddonName(folder) then return folder end
-    end
 end
 
 local function StopSampling()
@@ -57,7 +46,7 @@ end
 local function OnMaskWrite(region, mask)
     if region ~= Minimap or (writingMask ~= nil and IsPublic(mask) and rawequal(mask, writingMask)) then return end
     if not maskChanged then
-        maskChanged, maskSource = true, LikelySource()
+        maskChanged, maskSource = true, Attribution.FromStack()
     elseif not owner then
         return
     end
@@ -79,7 +68,7 @@ local function OnAlphaWrite(_, alpha)
     if not KongKontinued_CanAccessFrame(Minimap) then return end
     local effective = ReadOpacity(Minimap)
     if effective and effective < .995 then
-        PauseForOpacityChange(LikelySource())
+        PauseForOpacityChange(Attribution.FromStack())
     end
 end
 
@@ -110,12 +99,7 @@ local function FindPriorMask(region)
     -- A shape provider may own a mask installed before Kong could observe it.
     -- Our opacity masks are round, so do not take over a custom shape provider.
     if GetMinimapShape then
-        local source
-        if issecurevariable then
-            local _, addon = issecurevariable("GetMinimapShape")
-            if IsAddonName(addon) then source = addon end
-        end
-        return nil, "Another addon may be customizing the minimap shape", source
+        return nil, "Another addon may be customizing the minimap shape", Attribution.FromGlobal("GetMinimapShape")
     end
 
     if type(region.GetMaskTexture) == "function" then
