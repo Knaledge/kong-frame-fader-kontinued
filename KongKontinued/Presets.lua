@@ -5,7 +5,7 @@ local advancedTitle = "Advanced config applied"
 local advancedTooltip = "This frame already has an advanced config applied. Select 'Config' to edit it."
 local sliderLabels = {"Idle", "Mouseover", "Combat"}
 local sliderTop, entryTop = 53, 87
-local introTop, columnGutter, maxRowWidth = 54, 24, 280
+local introTop, columnGutter, maxRowWidth = 54, 24, 264
 local nativeBars = {
     {"MainActionBar", "Action Bar 1"},
     {"MultiBarBottomLeft", "Action Bar 2", "MultiBar1_IsVisible"},
@@ -372,13 +372,15 @@ local function CreateSection(section)
             SetOpacity(section, sliderIndex, value)
         end, control)
         control.label = CreateLabel(frame, label, "GameFontHighlightSmall")
-        control.label:SetPoint("BOTTOMLEFT", control, "TOPLEFT", 1, 2)
+        control.label:SetJustifyH("CENTER")
+        control.label:SetPoint("BOTTOM", control, "TOP", 0, 2)
         if control.Slider.SetNarrationLabelRegion then control.Slider:SetNarrationLabelRegion(control.label) end
         section.sliders[index] = control
     end
     section.status = CreateLabel(frame, "", "GameFontHighlightSmall")
     section.status:SetTextColor(.65, .65, .65)
-    section.status:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -entryTop)
+    section.status:SetJustifyH("CENTER")
+    section.status:SetPoint("TOP", frame, "TOP", 0, -entryTop)
 end
 
 function A.RefreshPresetOptions()
