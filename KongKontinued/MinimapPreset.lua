@@ -32,8 +32,11 @@ local function StopSampling()
     proxy:Hide()
 end
 
+local function IsObservedMaskSetter(region)
+    return region == watchedMap and region.SetMaskTexture == maskHooked
+end
+
 local function WriteMask(region, mask)
-    if not CanSetMask(region) then return false end
     writingMask = mask
     local ok = pcall(region.SetMaskTexture, region, mask)
     writingMask = nil
@@ -45,11 +48,11 @@ local function ReleaseMask()
     StopSampling()
     if appliedPercent ~= 100 or failed then
         local target = owner
-        if not CanSetMask(target) then
+        if not KongKontinued_CanAccessFrame(target) then
             restoring = true
             return
         end
-        if target == watchedMap and target.SetMaskTexture == maskHooked then
+        if IsObservedMaskSetter(target) then
             local ok = WriteMask(target, priorMask)
             if owner ~= target then return end
             if not ok then
@@ -70,6 +73,13 @@ local function QueueRefresh()
         if opacityChanged or failed then ReleaseMask() end
         if A.RefreshPresetOptions then A.RefreshPresetOptions() end
     end)
+end
+
+local function CheckMaskSetter(region)
+    if IsObservedMaskSetter(region) then return true end
+    ReleaseMask()
+    QueueRefresh()
+    return false
 end
 
 local function OnMaskWrite(region, mask)
@@ -121,7 +131,7 @@ local function Observe(region)
         if KongKontinued_GetFrameParent(parent) == MinimapCluster then WatchAlpha(MinimapCluster) end
     end
     local alphaHook = alphaHooks[region]
-    return maskHooked == region.SetMaskTexture and alphaHook and alphaHook == region.SetAlpha
+    return IsObservedMaskSetter(region) and alphaHook and alphaHook == region.SetAlpha
 end
 
 local function FindPriorMask(region)
@@ -164,7 +174,8 @@ function Preset.GetUnavailableReason()
 end
 
 function Preset.CheckOwnedMask()
-    if not owner or opacityChanged or restoring or not CanSetMask(owner) then return end
+    if not owner or opacityChanged or restoring or not KongKontinued_CanAccessFrame(owner)
+        or not CheckMaskSetter(owner) then return end
     local alpha = ReadOpacity(owner)
     if alpha and alpha < .995 then PauseForOpacityChange() end
 end
@@ -173,13 +184,14 @@ local function ApplyMask()
     if not owner or maskChanged or opacityChanged then return end
     local percent = math.floor(proxy:GetAlpha() * 100 + .5)
     if percent == appliedPercent then return end
-    local alpha = owner == Minimap and ReadOpacity(owner)
+    local target = owner
+    local alpha = target == Minimap and KongKontinued_CanAccessFrame(target) and ReadOpacity(target)
     if not alpha or alpha < .995 then
         PauseForOpacityChange()
         return
     end
+    if not CheckMaskSetter(target) then return end
     local mask = percent == 100 and priorMask or string.format(maskPattern, percent)
-    local target = owner
     local ok = WriteMask(target, mask)
     if owner ~= target then return end
     if ok then

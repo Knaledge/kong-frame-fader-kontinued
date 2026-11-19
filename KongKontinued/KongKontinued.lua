@@ -1,7 +1,7 @@
 ﻿local	_G, assert, ipairs, math, next, pairs, pcall, print, setmetatable, string, table, tonumber, tostring, type, xpcall
 =		_G, assert, ipairs, math, next, pairs, pcall, print, setmetatable, string, table, tonumber, tostring, type, xpcall
-local	CreateFrame, debugstack, GetMouseFoci, GetMouseFocus, GetRealmName, GetTime, hooksecurefunc, IsAddOnLoaded, StaticPopup_Show, strsplit, UnitName, WOW_PROJECT_CLASSIC, WOW_PROJECT_ID, WOW_PROJECT_MAINLINE
-=		CreateFrame, debugstack, GetMouseFoci, GetMouseFocus, GetRealmName, GetTime, hooksecurefunc, IsAddOnLoaded, StaticPopup_Show, strsplit, UnitName, WOW_PROJECT_CLASSIC, WOW_PROJECT_ID, WOW_PROJECT_MAINLINE
+local	CreateFrame, debugstack, GetMouseFoci, GetMouseFocus, GetRealmName, GetTime, IsAddOnLoaded, StaticPopup_Show, strsplit, UnitName, WOW_PROJECT_CLASSIC, WOW_PROJECT_ID, WOW_PROJECT_MAINLINE
+=		CreateFrame, debugstack, GetMouseFoci, GetMouseFocus, GetRealmName, GetTime, IsAddOnLoaded, StaticPopup_Show, strsplit, UnitName, WOW_PROJECT_CLASSIC, WOW_PROJECT_ID, WOW_PROJECT_MAINLINE
 
 
 local N, A = ... -- Addon (N)ame, (A)ddon Table
@@ -40,11 +40,22 @@ local function SetFrameAlpha(region, alpha)
 	return writer(FADER, region, alpha)
 end
 
-local function RestoreOwnedPresetAlpha(region)
-	if A.FramePresetTransparency then
-		return A.FramePresetTransparency.RestoreOwnedAlpha(
-			FADER, region, PresetOriginalAlpha[region], R.Fader.setAlpha)
+local function ApplyAlphaRestore(region, alpha, checkOwnership)
+	if checkOwnership then
+		return A.FramePresetTransparency.RestoreOwnedAlpha(FADER, region, alpha, R.Fader.setAlpha)
 	end
+	return SetFrameAlpha(region, alpha)
+end
+
+local function RestoreAlpha(region, alpha, checkOwnership)
+	local applied = ApplyAlphaRestore(region, alpha, checkOwnership)
+	PendingRestores[region] = applied == false and {alpha = alpha, checkOwnership = checkOwnership} or nil
+	return applied
+end
+
+local function GetPendingRestoreAlpha(region)
+	local restore = PendingRestores[region]
+	return restore and restore.alpha
 end
 
 local function GetFadeEventRegion(region)
@@ -81,8 +92,9 @@ function A.ApplyPendingVisibility()
 			if setting.overrideAlpha then KongKontinued_OverrideAlpha(region, true) end
 		end
 	end
-	for region, alpha in pairs(PendingRestores) do
-		if IsPresetTransparencyBlocked(region, KongKontinued_Frames[region]) or SetFrameAlpha(region, alpha) then
+	for region, restore in pairs(PendingRestores) do
+		if (not restore.checkOwnership and IsPresetTransparencyBlocked(region, KongKontinued_Frames[region]))
+			or ApplyAlphaRestore(region, restore.alpha, restore.checkOwnership) ~= false then
 			PendingRestores[region] = nil
 		end
 	end
@@ -465,7 +477,7 @@ function KongKontinued_Fade(region, fromAlpha, toAlpha, duration, startDelay)
 		if IsMinimapPreset(region, setting) then
 			target = A.MinimapPreset.Acquire()
 		elseif setting and setting.preset and PresetOriginalAlpha[region] == nil then
-			PresetOriginalAlpha[region] = PendingRestores[region] or R.Fader.getAlpha(FADER, region)
+			PresetOriginalAlpha[region] = GetPendingRestoreAlpha(region) or R.Fader.getAlpha(FADER, region)
 			if PresetOriginalAlpha[region] == nil then return end
 		end
 		if A.FramePresetTransparency and A.FramePresetTransparency.Handles(region) then writer = WriteGuardedFrameAlpha end
@@ -485,27 +497,24 @@ local function RestoreFrame(region, preserveAlpha)
 	if reveal then
 		SetFrameShown(region, true)
 	end
-	if preserveAlpha then
-		if setting.preset then RestoreOwnedPresetAlpha(region) end
-		PendingRestores[region], PresetOriginalAlpha[region] = nil, nil
-	end
 	if IsMinimapPreset(region, setting) then
 		local target = A.MinimapPreset.GetTarget()
 		if target then R.Fader.stopFade(FADER, target) end
 		A.MinimapPreset.Release()
 		return
 	end
-	if preserveAlpha then return end
 	local alpha = 1
+	local checkOwnership
 	if setting.preset then
-		alpha = PresetOriginalAlpha[region] or PendingRestores[region]
+		alpha = PresetOriginalAlpha[region] or GetPendingRestoreAlpha(region)
 		PresetOriginalAlpha[region] = nil
 		if alpha == nil then return end
+		checkOwnership = A.FramePresetTransparency and A.FramePresetTransparency.Tracks(region)
 	end
-	if SetFrameAlpha(region, alpha) then
+	if preserveAlpha and not checkOwnership then
 		PendingRestores[region] = nil
 	else
-		PendingRestores[region] = alpha
+		RestoreAlpha(region, alpha, checkOwnership)
 	end
 end
 
@@ -681,8 +690,9 @@ function A.OnFramePresetAvailabilityChanged(region, available)
 	if not available then
 		R.Fader.stopFade(FADER, region)
 		KongKontinued_OverrideAlpha(region, false)
-		PendingVisibility[region], PendingRestores[region] = nil, nil
-		if RestoreOwnedPresetAlpha(region) and HiddenFrames[region] then SetFrameShown(region, true) end
+		PendingVisibility[region] = nil
+		local alpha = PresetOriginalAlpha[region] or GetPendingRestoreAlpha(region)
+		if RestoreAlpha(region, alpha, true) and HiddenFrames[region] then SetFrameShown(region, true) end
 	elseif KongKontinued_Settings.enabled then
 		KongKontinued_OverrideAlpha(region, setting.overrideAlpha)
 		A.RefreshPresetFade(region)
@@ -939,6 +949,7 @@ function A.LoadFrames()
 		end
 	end
 	if loadedFrame then InvalidateMouseover() end
+	return loadedFrame
 end
 
 function KongKontinued_Unload()
@@ -1031,7 +1042,7 @@ function A.OnUpdate(self, elapsed)
 	frameFindTimer = frameFindTimer - elapsed
 	if frameFindTimer <= 0 then
 		frameFindTimer = FRAME_FIND_PERIOD
-		A.LoadFrames()
+		if A.LoadFrames() and A.RefreshPresetOptions then A.RefreshPresetOptions() end
 	end
 	transparencyTimer = transparencyTimer - elapsed
 	if transparencyTimer <= 0 then
@@ -1078,7 +1089,6 @@ function A.OnEvent(self, event, arg1, ...)
 
 		A.LoadSettings()
 		
-		hooksecurefunc("CreateFrame", function() frameFindTimer = 0; end)
 		KongKontinuedUIFader:SetScript("OnUpdate", A.OnUpdate)
 	elseif event == "PLAYER_LOGOUT" then
 		xpcall(KongKontinued_Unload, function(message) KongKontinued_Settings.error = message.."\n"..debugstack() end)

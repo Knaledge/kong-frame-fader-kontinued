@@ -42,9 +42,12 @@ function Transparency.ForEachChatFrame(callback)
     end)
 end
 
-function Transparency.Handles(region)
+function Transparency.Tracks(region)
     return IsPublic(region) and (region == PlayerFrame or region == TargetFrame or chatFrames[region] ~= nil)
-        and KongKontinued_CanAccessFrame(region)
+end
+
+function Transparency.Handles(region)
+    return Transparency.Tracks(region) and KongKontinued_CanAccessFrame(region)
 end
 
 local function QueueRefresh()
@@ -179,10 +182,13 @@ end
 function Transparency.RestoreOwnedAlpha(fader, region, alpha, writeAlpha)
     local state = records[region]
     if alpha == nil or not state or state.externalAlpha or state.writing
-        or state.lastAlpha == nil or state.lastAlpha == alpha or not Transparency.Handles(region) then return end
+        or state.lastAlpha == nil or state.lastAlpha == alpha or not Transparency.Tracks(region) then return end
+    -- False keeps the restore pending. Nil means there is nothing left to restore.
+    if not KongKontinued_CanAccessFrame(region) then return false end
     if chatFrames[region] and (not IsPublic(region.isTemporary) or region.isTemporary) then return end
     local current = ReadAlpha(region)
-    if current == nil or math.abs(current - state.lastAlpha) > alphaTolerance then return end
+    if current == nil then return false end
+    if math.abs(current - state.lastAlpha) > alphaTolerance then return end
     return ApplyAlpha(state, fader, region, alpha, writeAlpha)
 end
 
