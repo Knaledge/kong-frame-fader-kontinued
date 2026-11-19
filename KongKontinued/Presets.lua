@@ -71,7 +71,7 @@ local function FindEntries(section)
     return entries
 end
 
-local function FindSetting(entry)
+local function FindSetting(entry, resolvedFrames)
     local setting = KongKontinued_Frames[entry.region]
     if setting then return setting end
     local path = FramePath(entry.name)
@@ -79,11 +79,12 @@ local function FindSetting(entry)
     -- second configuration while that frame's existing rule is pending.
     for _, candidate in ipairs(KongKontinued_Settings.Frames) do
         if candidate.index == path then return candidate end
-        local resolve = A.LegacyImport.CompileFramePath(candidate.index)
-        if resolve then
-            local ok, region = pcall(resolve)
-            if ok and region ~= nil and region == entry.region then return candidate end
+        local region = resolvedFrames and resolvedFrames[candidate]
+        if region == nil then
+            region = A.ResolveSavedFrame(candidate) or false
+            if resolvedFrames then resolvedFrames[candidate] = region end
         end
+        if region == entry.region then return candidate end
     end
 end
 
@@ -113,10 +114,10 @@ local function ContainsOnlyOpacityChanges(setting, entry)
     return true
 end
 
-local function GetState(entry)
+local function GetState(entry, resolvedFrames)
     local region = entry.region
     if not KongKontinued_Initialized or not KongKontinued_CanAccessFrame(region) then return "unavailable" end
-    local setting = FindSetting(entry)
+    local setting = FindSetting(entry, resolvedFrames)
     local reason, source
     if entry.getUnavailableReason then reason, source = entry.getUnavailableReason(region) end
     if not setting then return reason and "unavailable" or "off", nil, reason, source end
@@ -430,6 +431,7 @@ function A.RefreshPresetOptions()
     advanced:SetEnabled(usable)
     local _, introHeight = intro:GetSize()
     local y = math.max(introHeight, 16) + introTop + 17
+    local resolvedFrames = {}
     for _, section in ipairs(sections) do
         if not locked then section.entries = FindEntries(section) end
         local entries = section.entries or {}
@@ -443,7 +445,7 @@ function A.RefreshPresetOptions()
         section.status:SetText("")
         if not section.group then section.config:SetEnabled(false) end
         for i, entry in ipairs(entries) do
-            local state, setting, reason, source = GetState(entry)
+            local state, setting, reason, source = GetState(entry, resolvedFrames)
             if state == "on" or state == "off" then eligible = eligible + 1 end
             local resetMode = GetResetMode(entry, state, setting, not section.group)
             if resetMode then resettable = resettable + 1 end

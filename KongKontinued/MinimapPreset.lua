@@ -32,13 +32,42 @@ local function StopSampling()
     proxy:Hide()
 end
 
+local function WriteMask(region, mask)
+    if not CanSetMask(region) then return false end
+    writingMask = mask
+    local ok = pcall(region.SetMaskTexture, region, mask)
+    writingMask = nil
+    return ok
+end
+
+local function ReleaseMask()
+    if not owner then return end
+    StopSampling()
+    if appliedPercent ~= 100 or failed then
+        local target = owner
+        if not CanSetMask(target) then
+            restoring = true
+            return
+        end
+        if target == watchedMap and target.SetMaskTexture == maskHooked then
+            local ok = WriteMask(target, priorMask)
+            if owner ~= target then return end
+            if not ok then
+                restoring = true
+                return
+            end
+        end
+    end
+    owner, priorMask, appliedPercent, restoring = nil, nil, nil, nil
+end
+
 local function QueueRefresh()
     if refreshQueued then return end
     refreshQueued = true
     C_Timer.After(0, function()
         refreshQueued = nil
         -- Let a competing writer finish before deciding who owns the mask.
-        if opacityChanged and owner then Preset.Release() end
+        if opacityChanged or failed then ReleaseMask() end
         if A.RefreshPresetOptions then A.RefreshPresetOptions() end
     end)
 end
@@ -134,16 +163,10 @@ function Preset.GetUnavailableReason()
     return reason, source
 end
 
-function Preset.IsAvailable()
-    return Preset.GetUnavailableReason() == nil
-end
-
-local function WriteMask(region, mask)
-    if not CanSetMask(region) then return false end
-    writingMask = mask
-    local ok = pcall(region.SetMaskTexture, region, mask)
-    writingMask = nil
-    return ok
+function Preset.CheckOwnedMask()
+    if not owner or opacityChanged or restoring or not CanSetMask(owner) then return end
+    local alpha = ReadOpacity(owner)
+    if alpha and alpha < .995 then PauseForOpacityChange() end
 end
 
 local function ApplyMask()
@@ -195,22 +218,12 @@ function Preset.FinishFade()
 end
 
 function Preset.Release()
-    if not owner then return end
-    StopSampling()
-    if appliedPercent ~= 100 then
-        local target = owner
-        local ok = WriteMask(target, priorMask)
-        if owner ~= target then return end
-        if not ok then
-            restoring = true
-            return
-        end
-    end
-    owner, priorMask, appliedPercent, failed, restoring = nil, nil, nil, nil, nil
+    ReleaseMask()
+    failed = nil
 end
 
 function Preset.RetryRestore()
-    if restoring then Preset.Release() end
+    if restoring then ReleaseMask() end
 end
 
 -- Install the observers as early as possible, including on clients that

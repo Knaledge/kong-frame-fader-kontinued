@@ -7,6 +7,7 @@ local records = setmetatable({}, {__mode = "k"})
 local chatFrames = setmetatable({}, {__mode = "k"})
 local chatTextRecords = setmetatable({}, {__mode = "k"})
 local alphaTolerance = .001
+local attributionInterval = 1
 local playerTransparencyConflict = "Another addon may be controlling player frame transparency"
 local targetTransparencyConflict = "Another addon may be controlling target frame transparency"
 local chatTransparencyConflict = "Another addon may be controlling chat frame transparency"
@@ -21,6 +22,10 @@ local function ReadAlpha(region)
     if type(region.GetAlpha) ~= "function" then return end
     local ok, alpha = pcall(region.GetAlpha, region)
     if ok and IsPublic(alpha) and type(alpha) == "number" and alpha >= 0 and alpha <= 1 then return alpha end
+end
+
+local function IsReduced(alpha)
+    return alpha ~= nil and alpha < 1 - alphaTolerance
 end
 
 function Transparency.TrackChatFrame(region)
@@ -62,18 +67,25 @@ local function GetChatTextConflict(region)
         if hooksecurefunc and type(container.SetAlpha) == "function" then
             pcall(hooksecurefunc, container, "SetAlpha", function(self)
                 local alpha = ReadAlpha(self)
-                local source = alpha and alpha < 1 - alphaTolerance and Attribution.FromStack() or nil
-                if alpha ~= state.alpha or source ~= state.source then
-                    state.alpha, state.source = alpha, source
-                    QueueRefresh()
+                local reduced, source = IsReduced(alpha), state.source
+                if reduced then
+                    local now = GetTime()
+                    if not state.sampledAt or now - state.sampledAt >= attributionInterval then
+                        source, state.sampledAt = Attribution.FromStack(), now
+                    end
+                else
+                    source, state.sampledAt = nil, nil
                 end
+                local changed = reduced ~= IsReduced(state.alpha) or source ~= state.source
+                state.alpha, state.source = alpha, source
+                if changed then QueueRefresh() end
             end)
         end
     end
 
     local alpha = ReadAlpha(container)
-    if alpha ~= state.alpha then state.alpha, state.source = alpha, nil end
-    if alpha and alpha < 1 - alphaTolerance then return chatTextTransparencyConflict, state.source end
+    if alpha ~= state.alpha then state.alpha, state.source, state.sampledAt = alpha, nil, nil end
+    if IsReduced(alpha) then return chatTextTransparencyConflict, state.source end
 end
 
 local function Observe(region)
@@ -144,6 +156,14 @@ function Transparency.CanFade(region)
     return false
 end
 
+local function ApplyAlpha(state, fader, region, alpha, writeAlpha)
+    state.writing = true
+    local applied = writeAlpha(fader, region, alpha)
+    state.writing = nil
+    if applied then state.lastAlpha = alpha end
+    return applied
+end
+
 function Transparency.WriteAlpha(fader, region, alpha, guarded, writeAlpha)
     if not Transparency.Handles(region) then return false end
     local state = Observe(region)
@@ -153,18 +173,17 @@ function Transparency.WriteAlpha(fader, region, alpha, guarded, writeAlpha)
         local current = ReadAlpha(region)
         if current and current < 1 - alphaTolerance then state.externalAlpha = true end
     end
-    state.writing = true
-    local applied = writeAlpha(fader, region, alpha)
-    state.writing = nil
-    if applied then state.lastAlpha = alpha end
-    return applied
+    return ApplyAlpha(state, fader, region, alpha, writeAlpha)
 end
 
-function Transparency.RestoreChatFrameAlpha(fader, region, alpha, writeAlpha)
+function Transparency.RestoreOwnedAlpha(fader, region, alpha, writeAlpha)
     local state = records[region]
-    if not chatFrames[region] or alpha == nil or not state or state.lastAlpha == nil or state.lastAlpha == alpha
-        or Transparency.GetUnavailableReason(region) ~= chatTextTransparencyConflict then return end
-    return Transparency.WriteAlpha(fader, region, alpha, false, writeAlpha)
+    if alpha == nil or not state or state.externalAlpha or state.writing
+        or state.lastAlpha == nil or state.lastAlpha == alpha or not Transparency.Handles(region) then return end
+    if chatFrames[region] and (not IsPublic(region.isTemporary) or region.isTemporary) then return end
+    local current = ReadAlpha(region)
+    if current == nil or math.abs(current - state.lastAlpha) > alphaTolerance then return end
+    return ApplyAlpha(state, fader, region, alpha, writeAlpha)
 end
 
 local function RefreshFrame(region)

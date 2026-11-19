@@ -40,9 +40,9 @@ local function SetFrameAlpha(region, alpha)
 	return writer(FADER, region, alpha)
 end
 
-local function RestoreOwnedChatAlpha(region)
+local function RestoreOwnedPresetAlpha(region)
 	if A.FramePresetTransparency then
-		return A.FramePresetTransparency.RestoreChatFrameAlpha(
+		return A.FramePresetTransparency.RestoreOwnedAlpha(
 			FADER, region, PresetOriginalAlpha[region], R.Fader.setAlpha)
 	end
 end
@@ -140,6 +140,19 @@ KongKontinued_ProfileRenames = {}
 
 local lastMouseFocus = nil
 local lastMouseStart = nil
+local mouseoverRegions, nextMouseoverRegions = {}, {}
+
+local function ReleaseMouseoverRegions()
+	for i, region in ipairs(mouseoverRegions) do
+		A.MouseoverRegionFader(region, A.FadeOut, -1)
+		mouseoverRegions[i] = nil
+	end
+end
+
+local function InvalidateMouseover()
+	ReleaseMouseoverRegions()
+	lastMouseFocus, lastMouseStart = nil, nil
+end
 
 local CANNOT_SAVE = "Nameless frames cannot be saved."
 local PROFILE_RESET = "Current profile %q has been reset."
@@ -473,7 +486,7 @@ local function RestoreFrame(region, preserveAlpha)
 		SetFrameShown(region, true)
 	end
 	if preserveAlpha then
-		if setting.preset then RestoreOwnedChatAlpha(region) end
+		if setting.preset then RestoreOwnedPresetAlpha(region) end
 		PendingRestores[region], PresetOriginalAlpha[region] = nil, nil
 	end
 	if IsMinimapPreset(region, setting) then
@@ -590,7 +603,7 @@ function KongKontinued_CalculateFadeOut(region)
 
 	for i, trigger in ipairs(setting) do
 		if ( trigger.refs > 0 ) then
-			if ( currentAlpha ~= nil and trigger.alphaIn >= currentAlpha ) then return end
+			if not setting.preset and currentAlpha ~= nil and trigger.alphaIn >= currentAlpha then return end
 
 			activeAlpha = math.max(activeAlpha or 0, trigger.alphaIn)
 		elseif ( trigger.lastFadeTime ~= nil ) then
@@ -609,6 +622,11 @@ function KongKontinued_CalculateFadeOut(region)
 		end
 	end
 	if activeAlpha then
+		if setting.preset and (currentAlpha == nil or activeAlpha >= currentAlpha) then
+			-- Replace an in-progress reveal when its remaining rule has a different target.
+			A.CalculateFadeIn(region)
+			return
+		end
 		endAlpha = setting.preset and activeAlpha or math.max(endAlpha, activeAlpha)
 	end
 
@@ -664,7 +682,7 @@ function A.OnFramePresetAvailabilityChanged(region, available)
 		R.Fader.stopFade(FADER, region)
 		KongKontinued_OverrideAlpha(region, false)
 		PendingVisibility[region], PendingRestores[region] = nil, nil
-		if RestoreOwnedChatAlpha(region) and HiddenFrames[region] then SetFrameShown(region, true) end
+		if RestoreOwnedPresetAlpha(region) and HiddenFrames[region] then SetFrameShown(region, true) end
 	elseif KongKontinued_Settings.enabled then
 		KongKontinued_OverrideAlpha(region, setting.overrideAlpha)
 		A.RefreshPresetFade(region)
@@ -687,6 +705,7 @@ end
 
 function KongKontinued_RegisterFrame(region, presetPath)
 	if not KongKontinued_CanAccessFrame(region) then return end
+	InvalidateMouseover()
 	KongKontinued_Frames[region] = {}
 	local index = presetPath or KongKontinued_FindGlobalIndex(region)
 	if ( index ~= nil ) then
@@ -704,24 +723,13 @@ function KongKontinued_RegisterFrame(region, presetPath)
 	if presetPath then KongKontinued_Frames[region].TriggerDefaults.alphaOut = .25 end
 	KongKontinued_Frames[region].Mouseover = KongKontinued_AddTrigger(region, LibUSC:Create("Condition", LibUSC:Create(MouseoverTypeName)))
 	KongKontinued_AddTrigger(region, LibUSC:Create("Condition", LibUSC:Create("Unit in Combat")))
-	if presetPath then
-		local mouseRegion = lastMouseStart
-		while mouseRegion do
-			if mouseRegion == region then
-				A.FadeIn(region, KongKontinued_Frames[region].Mouseover)
-				break
-			end
-			mouseRegion = KongKontinued_GetFrameParent(mouseRegion)
-		end
-		lastMouseFocus = false
-		A.RefreshPresetFade(region)
-	end
+	if presetPath then A.RefreshPresetFade(region) end
 end
 
 function KongKontinued_UnregisterFrame(region, preserveAlpha)
-	local setting = KongKontinued_Frames[region]
+	InvalidateMouseover()
 	for i = #KongKontinued_Frames[region], 1, -1 do
-		KongKontinued_RemoveTrigger(region, KongKontinued_Frames[region][i], preserveAlpha)
+		KongKontinued_RemoveTrigger(region, KongKontinued_Frames[region][i], true)
 	end
 	RestoreFrame(region, preserveAlpha)
 	local index = KongKontinued_Frames[region].index
@@ -735,7 +743,6 @@ function KongKontinued_UnregisterFrame(region, preserveAlpha)
 	end
 	KongKontinued_Frames[region] = nil
 	ChatPresetRegions[region] = nil
-	if setting.preset then lastMouseFocus = false end
 end
 
 function A.OnConditionStateChange(region, trigger)
@@ -760,6 +767,7 @@ function KongKontinued_AddTrigger(region, condition)
 end
 
 function KongKontinued_RemoveTrigger(region, trigger, skipFade)
+	if KongKontinued_Frames[region].Mouseover == trigger then InvalidateMouseover() end
 	local active = ConditionStates[trigger]
 	ConditionStates[trigger] = nil
 	if active and not skipFade then
@@ -781,6 +789,7 @@ function KongKontinued_AddFrameToGroup(region, name)
 	local group = KongKontinued_Settings.Groups[name]
 	local index = KongKontinued_Frames[region].index
 	if ( group[index] == nil ) then
+		InvalidateMouseover()
 		group[index] = region
 		return true
 	end
@@ -790,6 +799,7 @@ function KongKontinued_RemoveFrameFromGroup(region, name)
 	local group = KongKontinued_Settings.Groups[name]
 	local index = KongKontinued_Frames[region].index
 	if ( group ~= nil and group[index] ~= nil ) then
+		InvalidateMouseover()
 		group[index] = nil
 		if ( next(group) == nil ) then
 			KongKontinued_Settings.Groups[name] = nil
@@ -861,24 +871,31 @@ function A.LoadSettings()
 	end
 end
 
+local function NoSavedFrame() end
+
+function A.ResolveSavedFrame(setting)
+	if not setting.loader then
+		setting.loader = A.LegacyImport.CompileFramePath(setting.index) or NoSavedFrame
+	end
+	local resolved, region = pcall(setting.loader)
+	if resolved then return region end
+end
+
 function A.LoadFrames()
 	if not KongKontinued_Initialized then return end
+	local loadedFrame
 	for i = #KongKontinued_Settings.Frames, 1, -1 do
 		local setting = KongKontinued_Settings.Frames[i]
 		
-		if ( not setting.loader ) then
-			setting.loader = A.LegacyImport.CompileFramePath(setting.index) or function() end
-		end
-
-		local isFound, region = pcall(setting.loader)
+		local region = A.ResolveSavedFrame(setting)
 
 		if (
-				isFound
-				and R.Fader.canAccess(FADER, region)
+				R.Fader.canAccess(FADER, region)
 				and type(region.IsObjectType) == "function"
 				and region:IsObjectType("Region") -- make sure it is a region; ticket #5
 				and not KongKontinued_Frames[region]
 		) then
+			loadedFrame = true
 			setting.loader = nil
 			KongKontinued_Frames[region] = setting
 			if setting.preset then RememberChatPreset(region, setting.index) end
@@ -921,6 +938,7 @@ function A.LoadFrames()
 			end
 		end
 	end
+	if loadedFrame then InvalidateMouseover() end
 end
 
 function KongKontinued_Unload()
@@ -963,6 +981,7 @@ function KongKontinued_Unload()
 	ChatPresetRegions = {}
 	lastMouseFocus = nil
 	lastMouseStart = nil
+	mouseoverRegions, nextMouseoverRegions = {}, {}
 	KongKontinued_Initialized = false
 end
 
@@ -1001,13 +1020,24 @@ end
 
 local FRAME_FIND_PERIOD = 1.0
 local frameFindTimer = 0
+local transparencyTimer = 0
+
+local function TrackMouseoverRegion(region)
+	nextMouseoverRegions[#nextMouseoverRegions + 1] = region
+	A.MouseoverRegionFader(region, A.FadeIn, 1)
+end
 
 function A.OnUpdate(self, elapsed)
 	frameFindTimer = frameFindTimer - elapsed
 	if frameFindTimer <= 0 then
 		frameFindTimer = FRAME_FIND_PERIOD
 		A.LoadFrames()
+	end
+	transparencyTimer = transparencyTimer - elapsed
+	if transparencyTimer <= 0 then
+		transparencyTimer = FRAME_FIND_PERIOD
 		if A.FramePresetTransparency then A.FramePresetTransparency.Refresh() end
+		if A.MinimapPreset then A.MinimapPreset.CheckOwnedMask() end
 	end
 
 	local mouseFocus = KongKontinued_GetMouseFocus()
@@ -1028,11 +1058,10 @@ function A.OnUpdate(self, elapsed)
 		local mouseStart = mouseFocus ~= nil and A.FindFirstTrackedRegion(mouseFocus) or nil
 		if ( mouseStart ~= lastMouseStart ) then
 			if ( mouseStart ~= nil ) then
-				A.ForEachTrackedRegion(mouseStart, A.MouseoverRegionFader, A.FadeIn, 1)
+				A.ForEachTrackedRegion(mouseStart, TrackMouseoverRegion)
 			end
-			if ( lastMouseStart ~= nil ) then
-				A.ForEachTrackedRegion(lastMouseStart, A.MouseoverRegionFader, A.FadeOut, -1)
-			end
+			ReleaseMouseoverRegions()
+			mouseoverRegions, nextMouseoverRegions = nextMouseoverRegions, mouseoverRegions
 			lastMouseStart = mouseStart
 		end
 		lastMouseFocus = mouseFocus
