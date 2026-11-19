@@ -5,6 +5,7 @@ local advancedTitle = "Advanced config applied"
 local advancedTooltip = "This frame already has an advanced config applied. Select 'Config' to edit it."
 local sliderLabels = {"Idle", "Mouseover", "Combat"}
 local sliderTop, entryTop = 53, 87
+local introTop, columnGutter, maxRowWidth = 54, 24, 280
 local nativeBars = {
     {"MainActionBar", "Action Bar 1"},
     {"MultiBarBottomLeft", "Action Bar 2", "MultiBar1_IsVisible"},
@@ -119,15 +120,16 @@ local function GetState(entry)
     local available = entry.name ~= "Minimap" or A.MinimapPreset.IsAvailable()
     if not setting then return available and "off" or "unavailable" end
     if KongKontinued_Frames[region] ~= setting then return "unavailable" end
+    if not available then return "suspended", setting end
     if not ContainsOnlyOpacityChanges(setting, entry) then return "advanced", setting end
-    return available and "on" or "suspended", setting
+    return "on", setting
 end
 
 local function SetEnabled(entry, enabled)
     local state = GetState(entry)
     if enabled and state == "off" then
         KongKontinued_RegisterFrame(entry.region, FramePath(entry.name))
-    elseif not enabled and (state == "on" or state == "suspended") then
+    elseif not enabled and state == "on" then
         KongKontinued_UnregisterFrame(entry.region)
     end
 end
@@ -150,6 +152,10 @@ local function SetOpacity(section, index, alpha)
     A.RefreshPresetOptions()
 end
 
+local function IsResettable(state, setting)
+    return setting ~= nil and setting.preset == true and (state == "on" or state == "advanced")
+end
+
 local function ResetEntries(request)
     if not panel:IsVisible() or not A.CanModifyProfiles() or not A.IsCurrentProfileTarget(request.profile) then return end
     local current = FindEntries(request.section)
@@ -158,8 +164,7 @@ local function ResetEntries(request)
     for _, candidate in ipairs(request.entries) do
         local entry = candidate.entry
         local state, setting = GetState(entry)
-        if not listed[entry.region] or setting ~= candidate.setting
-            or (state ~= "on" and state ~= "advanced") then return end
+        if not listed[entry.region] or setting ~= candidate.setting or not IsResettable(state, setting) then return end
     end
     for _, candidate in ipairs(request.entries) do
         local entry = candidate.entry
@@ -171,7 +176,7 @@ local function ResetEntries(request)
 end
 
 StaticPopupDialogs[RESET_DIALOG] = {
-    text = "Reset %s to preset defaults? This discards advanced changes to the selected preset frames in the current profile.",
+    text = "Reset %s to preset defaults? This replaces the selected frames' settings in the current profile.",
     button1 = "Reset",
     button2 = CANCEL,
     OnAccept = function(_, request) ResetEntries(request) end,
@@ -184,19 +189,14 @@ StaticPopupDialogs[RESET_DIALOG] = {
 local function RequestReset(section, entry)
     if not A.CanModifyProfiles() then return end
     local request = {section = section, entries = {}, profile = A.CurrentProfileTarget()}
-    local needsConfirmation
     for _, candidate in ipairs(entry and {entry} or FindEntries(section)) do
         local state, setting = GetState(candidate)
-        if setting and setting.preset and (state == "on" or state == "advanced") then
+        if IsResettable(state, setting) then
             table.insert(request.entries, {entry = candidate, setting = setting})
-            needsConfirmation = needsConfirmation or state == "advanced"
         end
     end
-    if #request.entries == 0 then return end
-    if needsConfirmation then
+    if #request.entries > 0 then
         StaticPopup_Show(RESET_DIALOG, entry and entry.title or section.title, nil, request)
-    else
-        ResetEntries(request)
     end
 end
 
@@ -217,6 +217,10 @@ end
 
 local function CreateCheckbox(parent, onClick)
     local checkbox = CreateFrame("CheckButton", nil, parent, "SettingsCheckboxTemplate")
+    if checkbox.HoverBackground then
+        checkbox.HoverBackground:ClearAllPoints()
+        checkbox.HoverBackground:SetAllPoints(checkbox)
+    end
     checkbox:SetScript("OnClick", onClick)
     return checkbox
 end
@@ -348,12 +352,13 @@ function A.RefreshPresetOptions()
     enableFadingLabel:SetAlpha(usable and 1 or .55)
     advanced:SetEnabled(usable)
     local _, introHeight = intro:GetSize()
-    local y = math.max(introHeight, 16) + 63
+    local y = math.max(introHeight, 16) + introTop + 17
     for _, section in ipairs(sections) do
         if not locked then section.entries = FindEntries(section) end
         local entries = section.entries or {}
         local columnCount = width >= 440 and 2 or 1
-        local rowWidth = (width - (columnCount - 1) * 12) / columnCount
+        local columnWidth = (width - (columnCount - 1) * columnGutter) / columnCount
+        local rowWidth = math.min(columnWidth, maxRowWidth)
         local sliderWidth = (width - 32) / 3
         local enabled, eligible, resettable = 0, 0, 0
         local values, mixed = {}, {}
@@ -363,7 +368,7 @@ function A.RefreshPresetOptions()
         for i, entry in ipairs(entries) do
             local state, setting = GetState(entry)
             if state == "on" or state == "off" then eligible = eligible + 1 end
-            local canReset = setting and setting.preset and (state == "on" or state == "advanced")
+            local canReset = IsResettable(state, setting)
             if canReset then resettable = resettable + 1 end
             if state == "on" then
                 enabled = enabled + 1
@@ -385,7 +390,7 @@ function A.RefreshPresetOptions()
                 row.entry = entry
                 row:ClearAllPoints()
                 row:SetPoint("TOPLEFT", section.frame, "TOPLEFT",
-                    ((i - 1) % columnCount) * (rowWidth + 12), -entryTop - math.floor((i - 1) / columnCount) * 33)
+                    ((i - 1) % columnCount) * (columnWidth + columnGutter), -entryTop - math.floor((i - 1) / columnCount) * 33)
                 row:SetWidth(rowWidth)
                 row.label:SetText(entry.title:gsub("|", "||"))
                 row.status:SetWidth(rowWidth - 32)
@@ -394,7 +399,7 @@ function A.RefreshPresetOptions()
                 row.check:SetEnabled(usable and (state == "on" or state == "off"))
                 row.check:SetTooltipFunc(state == "advanced" and ShowAdvancedConfigTooltip or nil)
                 row.config:SetEnabled(configurable)
-                row.reset:SetEnabled(usable and not not canReset)
+                row.reset:SetEnabled(usable and canReset)
                 row:Show()
             else
                 advancedConfig = state == "advanced"
@@ -482,9 +487,9 @@ function A.CreatePresetOptions(title)
     advanced:SetWidth(122)
     advanced:SetPoint("TOPRIGHT", body, "TOPRIGHT", -12, -9)
 
-    intro = CreateLabel(body, "Use presets to get started with frame fading. Each preset sets up the rules you can fine-tune in Advanced Config.", "GameFontHighlightSmall")
-    intro:SetPoint("TOPLEFT", body, "TOPLEFT", 12, -46)
-    intro:SetPoint("TOPRIGHT", body, "TOPRIGHT", -12, -46)
+    intro = CreateLabel(body, "Use these presets to get started with frame fading. Each preset sets up the rules you can fine-tune in Advanced Config.", "GameFontHighlightSmall")
+    intro:SetPoint("TOPLEFT", body, "TOPLEFT", 12, -introTop)
+    intro:SetPoint("TOPRIGHT", body, "TOPRIGHT", -12, -introTop)
     intro:SetWordWrap(true)
     for _, section in ipairs(sections) do CreateSection(section) end
     scroll:SetScript("OnSizeChanged", function(_, width)
