@@ -1,6 +1,8 @@
 local _, A = ...
 
 local RESET_DIALOG = "KONGKONTINUED_RESET_PRESETS"
+local advancedTitle = "Advanced config applied"
+local advancedTooltip = "This frame already has an advanced config applied. Select 'Config' to edit it."
 local sliderLabels = {"Idle", "Mouseover", "Combat"}
 local sliderTop, entryTop = 53, 87
 local nativeBars = {
@@ -219,10 +221,19 @@ local function CreateCheckbox(parent, onClick)
     return checkbox
 end
 
+local function ShowAdvancedConfigTooltip()
+    Settings.InitTooltip(advancedTitle, advancedTooltip)
+end
+
+local function ShowMixedPresetTooltip()
+    Settings.InitTooltip("Some presets enabled",
+        "Some presets in this section are enabled. Select 'All' to enable the remaining available presets")
+end
+
 local function ShowUnavailableTooltip(frame)
     if not frame.reason then return end
     GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
-    GameTooltip:SetText("Minimap preset unavailable")
+    GameTooltip:SetText(frame.title)
     GameTooltip:AddLine(frame.reason, 1, 1, 1, true)
     if frame.source then GameTooltip:AddLine("Likely source: " .. frame.source, .75, .75, .75, true) end
     GameTooltip:Show()
@@ -346,7 +357,7 @@ function A.RefreshPresetOptions()
         local sliderWidth = (width - 32) / 3
         local enabled, eligible, resettable = 0, 0, 0
         local values, mixed = {}, {}
-        local unavailableReason, likelySource
+        local advancedConfig, unavailableReason, likelySource
         section.status:SetText("")
         if not section.group then section.config:SetEnabled(false) end
         for i, entry in ipairs(entries) do
@@ -362,7 +373,7 @@ function A.RefreshPresetOptions()
                     elseif values[j] ~= value then mixed[j] = true end
                 end
             end
-            local status = state == "advanced" and "Advanced configuration applied"
+            local status = state == "advanced" and advancedTitle
                 or (state == "unavailable" or state == "suspended") and "Unavailable" or ""
             local configurable = usable and KongKontinued_CanAccessFrame(entry.region)
             if section.group then
@@ -381,31 +392,37 @@ function A.RefreshPresetOptions()
                 row.status:SetText(status)
                 row.check:SetChecked(state == "on" or state == "advanced")
                 row.check:SetEnabled(usable and (state == "on" or state == "off"))
+                row.check:SetTooltipFunc(state == "advanced" and ShowAdvancedConfigTooltip or nil)
                 row.config:SetEnabled(configurable)
                 row.reset:SetEnabled(usable and not not canReset)
                 row:Show()
             else
+                advancedConfig = state == "advanced"
                 section.status:SetText(status)
                 section.config:SetEnabled(configurable)
-                section.check:SetChecked(state == "on" or state == "advanced" or state == "suspended")
+                section.check:SetChecked(state == "on" or advancedConfig or state == "suspended")
                 if section.unavailableTooltip then
                     if state == "unavailable" or state == "suspended" then
                         unavailableReason, likelySource = A.MinimapPreset.GetUnavailableReason()
                         unavailableReason = unavailableReason or "The minimap frame configuration is unavailable"
-                    elseif state == "advanced" then
-                        unavailableReason = "An advanced Kong configuration is applied to the minimap"
+                    elseif advancedConfig then
+                        unavailableReason = advancedTooltip
                     end
                 end
             end
         end
         if section.group then section.check:SetChecked(eligible > 0 and enabled == eligible) end
-        section.mixed:SetShown(section.group and enabled > 0 and enabled < eligible)
+        local partiallyEnabled = section.group and enabled > 0 and enabled < eligible
+        section.mixed:SetShown(partiallyEnabled)
+        section.check:SetTooltipFunc(advancedConfig and ShowAdvancedConfigTooltip
+            or partiallyEnabled and ShowMixedPresetTooltip or nil)
         local canToggle = usable and eligible > 0
         section.check:SetEnabled(canToggle)
         local tooltip = section.unavailableTooltip
         if tooltip then
             section.check:SetAlpha(canToggle and 1 or .55)
             section.checkLabel:SetAlpha(canToggle and 1 or .55)
+            tooltip.title = advancedConfig and advancedTitle or "Minimap preset unavailable"
             tooltip.reason = not canToggle and (unavailableReason
                 or (locked and "Preset settings are unavailable during combat")
                 or "The minimap frame is unavailable") or nil
