@@ -15,6 +15,24 @@ local ConditionStates = setmetatable({}, {__mode = "k"})
 local PresetOriginalAlpha = setmetatable({}, {__mode = "k"})
 local ChatPresetRegions = {}
 
+local function IsUnitFramePreset(region, setting)
+	return setting and setting.preset and A.UnitFramePresets and A.UnitFramePresets.Handles(region)
+end
+
+local function IsUnitFramePresetBlocked(region, setting)
+	return IsUnitFramePreset(region, setting) and A.UnitFramePresets.GetUnavailableReason(region) ~= nil
+end
+
+local function WriteUnitFrameAlpha(fader, region, alpha)
+	local setting = KongKontinued_Frames[region]
+	return A.UnitFramePresets.WriteAlpha(fader, region, alpha, setting and setting.preset, R.Fader.setAlpha)
+end
+
+local function SetFrameAlpha(region, alpha)
+	local writer = A.UnitFramePresets and A.UnitFramePresets.Handles(region) and WriteUnitFrameAlpha or R.Fader.setAlpha
+	return writer(FADER, region, alpha)
+end
+
 local function GetFadeEventRegion(region)
 	if A.MinimapPreset and A.MinimapPreset.GetTarget() == region then return Minimap end
 	return region
@@ -50,12 +68,15 @@ function A.ApplyPendingVisibility()
 		end
 	end
 	for region, alpha in pairs(PendingRestores) do
-		if R.Fader.setAlpha(FADER, region, alpha) then PendingRestores[region] = nil end
+		if IsUnitFramePresetBlocked(region, KongKontinued_Frames[region]) or SetFrameAlpha(region, alpha) then
+			PendingRestores[region] = nil
+		end
 	end
 	for region, shown in pairs(PendingVisibility) do
 		local setting = KongKontinued_Frames[region]
 		local alpha = R.Fader.getAlpha(FADER, region)
-		if shown or (setting and setting.hideAtZeroAlpha and (alpha == nil or alpha == 0)) then
+		if not IsUnitFramePresetBlocked(region, setting)
+			and (shown or (setting and setting.hideAtZeroAlpha and (alpha == nil or alpha == 0))) then
 			SetFrameShown(region, shown)
 		else
 			PendingVisibility[region] = nil
@@ -380,7 +401,8 @@ function KongKontinued_OverrideAlpha(region, override)
 	assert(KongKontinued_Frames[region] ~= nil)
 	local state = AlphaOverrides[region]
 
-	if ( override and KongKontinued_Settings.enabled and R.Fader.canAccess(FADER, region) ) then
+	if ( override and KongKontinued_Settings.enabled and R.Fader.canAccess(FADER, region)
+		and not IsUnitFramePresetBlocked(region, KongKontinued_Frames[region]) ) then
 		if ( state ~= nil ) then return end
 		state = {
 			original = rawget(region, "SetAlpha"),
@@ -411,14 +433,16 @@ end
 function KongKontinued_Fade(region, fromAlpha, toAlpha, duration, startDelay)
 	if ( KongKontinued_Settings.enabled and (KongKontinuedConfig == nil or not KongKontinuedConfig:IsShown()) ) then
 		local setting = KongKontinued_Frames[region]
-		local target = region
+		if IsUnitFramePreset(region, setting) and not A.UnitFramePresets.CanFade(region) then return end
+		local target, writer = region
 		if IsMinimapPreset(region, setting) then
 			target = A.MinimapPreset.Acquire()
 		elseif setting and setting.preset and PresetOriginalAlpha[region] == nil then
 			PresetOriginalAlpha[region] = PendingRestores[region] or R.Fader.getAlpha(FADER, region)
 			if PresetOriginalAlpha[region] == nil then return end
 		end
-		if target then R.Fader.fade(FADER, target, fromAlpha, toAlpha, duration, nil, startDelay) end
+		if A.UnitFramePresets and A.UnitFramePresets.Handles(region) then writer = WriteUnitFrameAlpha end
+		if target then R.Fader.fade(FADER, target, fromAlpha, toAlpha, duration, nil, startDelay, nil, writer) end
 	end
 end
 
@@ -427,6 +451,7 @@ local function RestoreFrame(region, preserveAlpha)
 	R.Fader.stopFade(FADER, region)
 	KongKontinued_OverrideAlpha(region, false)
 	local setting = KongKontinued_Frames[region]
+	preserveAlpha = preserveAlpha or IsUnitFramePresetBlocked(region, setting)
 	local reveal = HiddenFrames[region] or (not preserveAlpha and (PendingVisibility[region] == true
 		or (setting.hideAtZeroAlpha and R.Fader.getAlpha(FADER, region) == 0)))
 	PendingVisibility[region] = nil
@@ -449,7 +474,7 @@ local function RestoreFrame(region, preserveAlpha)
 		PresetOriginalAlpha[region] = nil
 		if alpha == nil then return end
 	end
-	if R.Fader.setAlpha(FADER, region, alpha) then
+	if SetFrameAlpha(region, alpha) then
 		PendingRestores[region] = nil
 	else
 		PendingRestores[region] = alpha
@@ -457,6 +482,7 @@ local function RestoreFrame(region, preserveAlpha)
 end
 
 function KongKontinued_UpdateFrameVisibility(region)
+	if IsUnitFramePresetBlocked(region, KongKontinued_Frames[region]) then return end
 	if not KongKontinued_Frames[region].hideAtZeroAlpha then
 		local reveal = HiddenFrames[region] or PendingVisibility[region] == true
 		PendingVisibility[region] = nil
@@ -614,6 +640,19 @@ function A.RefreshPresetFade(region)
 		end
 	end
 	KongKontinued_CalculateFadeOut(region)
+end
+
+function A.OnUnitFramePresetAvailabilityChanged(region, available)
+	local setting = KongKontinued_Frames[region]
+	if not IsUnitFramePreset(region, setting) then return end
+	if not available then
+		R.Fader.stopFade(FADER, region)
+		KongKontinued_OverrideAlpha(region, false)
+		PendingVisibility[region], PendingRestores[region] = nil, nil
+	elseif KongKontinued_Settings.enabled then
+		KongKontinued_OverrideAlpha(region, setting.overrideAlpha)
+		A.RefreshPresetFade(region)
+	end
 end
 
 function A.CreateTrigger(Frame)
@@ -954,6 +993,7 @@ function A.OnUpdate(self, elapsed)
 	if frameFindTimer <= 0 then
 		frameFindTimer = FRAME_FIND_PERIOD
 		A.LoadFrames()
+		if A.UnitFramePresets then A.UnitFramePresets.Refresh() end
 	end
 
 	local mouseFocus = KongKontinued_GetMouseFocus()

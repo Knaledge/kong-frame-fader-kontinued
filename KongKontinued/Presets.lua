@@ -18,10 +18,12 @@ local nativeBars = {
 }
 local sections = {
     {title = "Action Bars", group = true},
-    {title = "Minimap", global = "Minimap"},
+    {title = "Minimap", global = "Minimap", getUnavailableReason = A.MinimapPreset.GetUnavailableReason},
     {title = "Objective Tracker", global = "ObjectiveTrackerFrame"},
     {title = "Chat Frames", group = true},
     {title = "Player Buffs", global = "BuffFrame"},
+    {title = "Player Frame", global = "PlayerFrame", getUnavailableReason = A.UnitFramePresets.GetUnavailableReason},
+    {title = "Target Frame", global = "TargetFrame", getUnavailableReason = A.UnitFramePresets.GetUnavailableReason},
 }
 local panel, body, intro, enableFading, enableFadingLabel, advanced, refreshing
 
@@ -36,7 +38,8 @@ end
 local function FindEntries(section)
     local entries = {}
     if section.global then
-        entries[1] = {name = section.global, title = section.title, region = _G[section.global]}
+        entries[1] = {name = section.global, title = section.title, region = _G[section.global],
+            getUnavailableReason = section.getUnavailableReason}
     elseif section == sections[1] then
         for _, bar in ipairs(nativeBars) do
             local name, title, predicate = unpack(bar)
@@ -117,10 +120,11 @@ local function GetState(entry)
     local region = entry.region
     if not KongKontinued_Initialized or not KongKontinued_CanAccessFrame(region) then return "unavailable" end
     local setting = FindSetting(entry)
-    local available = entry.name ~= "Minimap" or A.MinimapPreset.IsAvailable()
-    if not setting then return available and "off" or "unavailable" end
-    if KongKontinued_Frames[region] ~= setting then return "unavailable" end
-    if not available then return "suspended", setting end
+    local reason, source
+    if entry.getUnavailableReason then reason, source = entry.getUnavailableReason(region) end
+    if not setting then return reason and "unavailable" or "off", nil, reason, source end
+    if KongKontinued_Frames[region] ~= setting then return "unavailable", nil, reason, source end
+    if reason then return "suspended", setting, reason, source end
     if not ContainsOnlyOpacityChanges(setting, entry) then return "advanced", setting end
     return "on", setting
 end
@@ -368,7 +372,7 @@ local function CreateSection(section)
         A.RefreshPresetOptions()
     end)
     section.check:SetPoint("RIGHT", section.checkLabel, "LEFT", -1, 0)
-    if section.global == "Minimap" then section.unavailableTooltip = CreateUnavailableTooltip(section) end
+    if section.getUnavailableReason then section.unavailableTooltip = CreateUnavailableTooltip(section) end
     section.mixed = section.check:CreateTexture(nil, "OVERLAY")
     section.mixed:SetColorTexture(.82, .82, .82, 1)
     section.mixed:SetSize(10, 2)
@@ -426,7 +430,7 @@ function A.RefreshPresetOptions()
         section.status:SetText("")
         if not section.group then section.config:SetEnabled(false) end
         for i, entry in ipairs(entries) do
-            local state, setting = GetState(entry)
+            local state, setting, reason, source = GetState(entry)
             if state == "on" or state == "off" then eligible = eligible + 1 end
             local resetMode = GetResetMode(entry, state, setting, not section.group)
             if resetMode then resettable = resettable + 1 end
@@ -468,8 +472,7 @@ function A.RefreshPresetOptions()
                 section.check:SetChecked(state == "on" or advancedConfig or state == "suspended")
                 if section.unavailableTooltip then
                     if state == "unavailable" or state == "suspended" then
-                        unavailableReason, likelySource = A.MinimapPreset.GetUnavailableReason()
-                        unavailableReason = unavailableReason or "The minimap frame configuration is unavailable"
+                        unavailableReason, likelySource = reason or "The frame configuration is unavailable", source
                         showConfigWarning = configurable
                     elseif advancedConfig then
                         unavailableReason = advancedTooltip
@@ -488,10 +491,10 @@ function A.RefreshPresetOptions()
         if tooltip then
             section.check:SetAlpha(canToggle and 1 or .55)
             section.checkLabel:SetAlpha(canToggle and 1 or .55)
-            tooltip.title = advancedConfig and advancedTitle or "Minimap preset unavailable"
+            tooltip.title = advancedConfig and advancedTitle or section.title .. " preset unavailable"
             tooltip.reason = not canToggle and (unavailableReason
                 or (locked and "Preset settings are unavailable during combat")
-                or "The minimap frame is unavailable") or nil
+                or "The frame is unavailable") or nil
             tooltip.source = not canToggle and likelySource or nil
             tooltip.showConfigWarning = showConfigWarning
             tooltip:SetShown(tooltip.reason ~= nil)

@@ -71,6 +71,7 @@ function E.tearDownAnimationGroup(self, group)
 	self.activeGroups[group.region] = nil
 	group.region = nil
 	group.snap = nil
+	group.writeAlpha = nil
 end
 
 
@@ -100,7 +101,7 @@ function P.setAlpha(self, region, alpha)
 end
 
 
-function P.fade(self, region, fromAlpha, toAlpha, duration, smoothing, startDelay, endDelay)
+function P.fade(self, region, fromAlpha, toAlpha, duration, smoothing, startDelay, endDelay, writeAlpha)
 	if not P.canAccess(self, region) or not E.isPublicNumber(toAlpha) then
 		P.stopFade(self, region)
 		return
@@ -133,6 +134,7 @@ function P.fade(self, region, fromAlpha, toAlpha, duration, smoothing, startDela
 	self.activeGroups[region] = group
 	group.region = region
 	group.snap = snap
+	group.writeAlpha = writeAlpha
 	
 	group:Play()
 end
@@ -179,7 +181,7 @@ function E.animationGroup_onFinshed(self, group)
 	local animation = group.animation
 	local toAlpha = animation:GetToAlpha()
 	
-	local applied = P.setAlpha(self, region, toAlpha)
+	local applied = (group.writeAlpha or P.setAlpha)(self, region, toAlpha)
 	R.ObjectPool.release(self.groupPool, group)
 	R.EventDispatcher.dispatchEvent(self.events, applied and "FADE_FINISHED" or "FADE_STOPPED", region, toAlpha)
 end
@@ -196,5 +198,9 @@ function E.animationGroup_onUpdate(self, group)
 	local displacement = animation:GetToAlpha() - fromAlpha
 	local alpha = fromAlpha + (displacement * animation:GetSmoothProgress())
 	
-	self.frame.SetAlpha(group.region, alpha)
+	if group.writeAlpha then
+		if not group.writeAlpha(self, group.region, alpha) then P.stopFade(self, group.region) end
+	else
+		self.frame.SetAlpha(group.region, alpha)
+	end
 end

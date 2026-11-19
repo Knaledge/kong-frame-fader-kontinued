@@ -18,5 +18,6 @@ LegacyImport.lua
 KongKontinued.lua
 CommandLine.lua
 MinimapPreset.lua
+UnitFramePresets.lua
 Presets.lua
 Options.lua
