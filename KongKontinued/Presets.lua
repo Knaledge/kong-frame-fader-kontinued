@@ -295,6 +295,7 @@ local function ShowUnavailableTooltip(frame)
     GameTooltip:AddLine(frame.reason, 1, 1, 1, true)
     if frame.source then GameTooltip:AddLine("Likely source: " .. frame.source, .75, .75, .75, true) end
     if frame.showConfigWarning then
+        if frame.source then GameTooltip:AddLine(" ") end
         GameTooltip:AddLine("Config is still available, though transparency may behave unexpectedly", 1, 1, 1, true)
     end
     GameTooltip:Show()
