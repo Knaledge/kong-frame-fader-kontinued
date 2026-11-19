@@ -152,8 +152,10 @@ local function SetOpacity(section, index, alpha)
     A.RefreshPresetOptions()
 end
 
-local function IsResettable(state, setting, individual)
-    return setting ~= nil and (individual or setting.preset == true) and (state == "on" or state == "advanced")
+local function GetResetMode(entry, state, setting, individual)
+    if not setting or not (individual or setting.preset == true) then return end
+    if state == "on" or state == "advanced" then return "defaults" end
+    if state == "suspended" and not ContainsOnlyOpacityChanges(setting, entry) then return "clear" end
 end
 
 local function GetResetGroupImpact(entries)
@@ -186,8 +188,11 @@ local function ResetEntries(request)
     for _, candidate in ipairs(request.entries) do
         local entry = candidate.entry
         local state, setting = GetState(entry)
-        if not listed[entry.region] or setting ~= candidate.setting
-            or not IsResettable(state, setting, request.individual) then return end
+        if not listed[entry.region] or setting ~= candidate.setting then return end
+        if GetResetMode(entry, state, setting, request.individual) ~= candidate.mode then
+            KongKontinued_Warning("Preset availability changed. Open Reset again to review the changes.")
+            return
+        end
     end
     local memberships, emptiedGroups = GetResetGroupImpact(request.entries)
     if memberships ~= request.memberships or emptiedGroups ~= request.emptiedGroups then
@@ -197,14 +202,14 @@ local function ResetEntries(request)
     for _, candidate in ipairs(request.entries) do
         local entry = candidate.entry
         local region = entry.region
-        KongKontinued_UnregisterFrame(region)
-        KongKontinued_RegisterFrame(region, FramePath(entry.name))
+        KongKontinued_UnregisterFrame(region, candidate.mode == "clear")
+        if candidate.mode == "defaults" then KongKontinued_RegisterFrame(region, FramePath(entry.name)) end
     end
     A.RefreshPresetOptions()
 end
 
 StaticPopupDialogs[RESET_DIALOG] = {
-    text = "Reset %s to preset defaults? This replaces the selected frames' settings in the current profile.%s",
+    text = "%s%s",
     button1 = "Reset",
     button2 = CANCEL,
     OnAccept = function(_, request) ResetEntries(request) end,
@@ -224,8 +229,9 @@ local function RequestReset(section, entry)
     }
     for _, candidate in ipairs(entry and {entry} or FindEntries(section)) do
         local state, setting = GetState(candidate)
-        if IsResettable(state, setting, request.individual) then
-            table.insert(request.entries, {entry = candidate, setting = setting})
+        local mode = GetResetMode(candidate, state, setting, request.individual)
+        if mode then
+            table.insert(request.entries, {entry = candidate, setting = setting, mode = mode})
         end
     end
     if #request.entries > 0 then
@@ -237,7 +243,14 @@ local function RequestReset(section, entry)
                 groupWarning = groupWarning .. " Groups that lose their last member will be deleted."
             end
         end
-        StaticPopup_Show(RESET_DIALOG, entry and entry.title or section.title, groupWarning, request)
+        local title = entry and entry.title or section.title
+        local confirmation
+        if request.entries[1].mode == "clear" then
+            confirmation = "Clear Kong's settings for " .. title .. " in the current profile? The preset will stay disabled."
+        else
+            confirmation = "Reset " .. title .. " to preset defaults? This replaces the selected frames' settings in the current profile."
+        end
+        StaticPopup_Show(RESET_DIALOG, confirmation, groupWarning, request)
     end
 end
 
@@ -281,6 +294,9 @@ local function ShowUnavailableTooltip(frame)
     GameTooltip:SetText(frame.title)
     GameTooltip:AddLine(frame.reason, 1, 1, 1, true)
     if frame.source then GameTooltip:AddLine("Likely source: " .. frame.source, .75, .75, .75, true) end
+    if frame.showConfigWarning then
+        GameTooltip:AddLine("Config is still available, though transparency may behave unexpectedly", 1, 1, 1, true)
+    end
     GameTooltip:Show()
 end
 
@@ -405,13 +421,14 @@ function A.RefreshPresetOptions()
         local sliderWidth = (width - 32) / 3
         local enabled, eligible, resettable = 0, 0, 0
         local values, mixed = {}, {}
-        local advancedConfig, unavailableReason, likelySource
+        local advancedConfig, unavailableReason, likelySource, showConfigWarning
         section.status:SetText("")
         if not section.group then section.config:SetEnabled(false) end
         for i, entry in ipairs(entries) do
             local state, setting = GetState(entry)
             if state == "on" or state == "off" then eligible = eligible + 1 end
-            if IsResettable(state, setting, not section.group) then resettable = resettable + 1 end
+            local resetMode = GetResetMode(entry, state, setting, not section.group)
+            if resetMode then resettable = resettable + 1 end
             if state == "on" then
                 enabled = enabled + 1
                 local idle, hover, combat = GetValues(setting)
@@ -441,7 +458,7 @@ function A.RefreshPresetOptions()
                 row.check:SetEnabled(usable and (state == "on" or state == "off"))
                 row.check:SetTooltipFunc(state == "advanced" and ShowAdvancedConfigTooltip or nil)
                 row.config:SetEnabled(configurable)
-                row.reset:SetEnabled(usable and IsResettable(state, setting, true))
+                row.reset:SetEnabled(usable and GetResetMode(entry, state, setting, true) ~= nil)
                 row:Show()
             else
                 advancedConfig = state == "advanced"
@@ -452,6 +469,7 @@ function A.RefreshPresetOptions()
                     if state == "unavailable" or state == "suspended" then
                         unavailableReason, likelySource = A.MinimapPreset.GetUnavailableReason()
                         unavailableReason = unavailableReason or "The minimap frame configuration is unavailable"
+                        showConfigWarning = configurable
                     elseif advancedConfig then
                         unavailableReason = advancedTooltip
                     end
@@ -474,6 +492,7 @@ function A.RefreshPresetOptions()
                 or (locked and "Preset settings are unavailable during combat")
                 or "The minimap frame is unavailable") or nil
             tooltip.source = not canToggle and likelySource or nil
+            tooltip.showConfigWarning = showConfigWarning
             tooltip:SetShown(tooltip.reason ~= nil)
             if tooltip.reason and GameTooltip:IsOwned(tooltip) then ShowUnavailableTooltip(tooltip) end
         end

@@ -422,23 +422,27 @@ function KongKontinued_Fade(region, fromAlpha, toAlpha, duration, startDelay)
 	end
 end
 
-local function RestoreFrame(region)
+local function RestoreFrame(region, preserveAlpha)
 	-- Finish cleanup before the frame's settings can be removed or replaced.
 	R.Fader.stopFade(FADER, region)
 	KongKontinued_OverrideAlpha(region, false)
-	local reveal = HiddenFrames[region] or PendingVisibility[region] == true
-		or (KongKontinued_Frames[region].hideAtZeroAlpha and R.Fader.getAlpha(FADER, region) == 0)
+	local setting = KongKontinued_Frames[region]
+	local reveal = HiddenFrames[region] or (not preserveAlpha and (PendingVisibility[region] == true
+		or (setting.hideAtZeroAlpha and R.Fader.getAlpha(FADER, region) == 0)))
 	PendingVisibility[region] = nil
 	if reveal then
 		SetFrameShown(region, true)
 	end
-	local setting = KongKontinued_Frames[region]
+	if preserveAlpha then
+		PendingRestores[region], PresetOriginalAlpha[region] = nil, nil
+	end
 	if IsMinimapPreset(region, setting) then
 		local target = A.MinimapPreset.GetTarget()
 		if target then R.Fader.stopFade(FADER, target) end
 		A.MinimapPreset.Release()
 		return
 	end
+	if preserveAlpha then return end
 	local alpha = 1
 	if setting.preset then
 		alpha = PresetOriginalAlpha[region] or PendingRestores[region]
@@ -659,12 +663,12 @@ function KongKontinued_RegisterFrame(region, presetPath)
 	end
 end
 
-function KongKontinued_UnregisterFrame(region)
+function KongKontinued_UnregisterFrame(region, preserveAlpha)
 	local setting = KongKontinued_Frames[region]
 	for i = #KongKontinued_Frames[region], 1, -1 do
-		KongKontinued_RemoveTrigger(region, KongKontinued_Frames[region][i])
+		KongKontinued_RemoveTrigger(region, KongKontinued_Frames[region][i], preserveAlpha)
 	end
-	RestoreFrame(region)
+	RestoreFrame(region, preserveAlpha)
 	local index = KongKontinued_Frames[region].index
 	for name, group in pairs(KongKontinued_Settings.Groups) do
 		if ( group[index] ~= nil ) then
@@ -700,10 +704,10 @@ function KongKontinued_AddTrigger(region, condition)
 	return trigger
 end
 
-function KongKontinued_RemoveTrigger(region, trigger)
+function KongKontinued_RemoveTrigger(region, trigger, skipFade)
 	local active = ConditionStates[trigger]
 	ConditionStates[trigger] = nil
-	if active then
+	if active and not skipFade then
 		A.FadeOut(region, trigger)
 	end
 	trigger.Condition:RemoveListener(A.OnConditionStateChange)
