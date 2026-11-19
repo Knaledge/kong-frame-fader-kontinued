@@ -4,7 +4,7 @@ local RESET_DIALOG = "KONGKONTINUED_RESET_PRESETS"
 local advancedTitle = "Advanced config applied"
 local advancedTooltip = "This frame already has an advanced config applied. Select 'Config' to edit it."
 local sliderLabels = {"Idle", "Mouseover", "Combat"}
-local sliderTop, entryTop = 53, 87
+local sliderTop, entryTop, sectionGap = 63, 109, 38
 local introTop, columnGutter, maxRowWidth = 54, 24, 264
 local nativeBars = {
     {"MainActionBar", "Action Bar 1"},
@@ -497,7 +497,7 @@ function A.RefreshPresetOptions()
         section.frame:SetPoint("TOPLEFT", body, "TOPLEFT", 12, -y)
         section.frame:SetWidth(width)
         section.frame:SetHeight(height)
-        y = y + height + 26
+        y = y + height + sectionGap
     end
     body:SetHeight(y)
     refreshing = false
