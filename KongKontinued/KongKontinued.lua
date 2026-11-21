@@ -25,6 +25,24 @@ local function HasPresetTransparencyGuard(region, setting)
 	return setting and setting.preset and A.FramePresetTransparency and A.FramePresetTransparency.Handles(region)
 end
 
+function KongKontinued_IsManagedActionBar(region)
+	return A.FramePresetTransparency and A.FramePresetTransparency.IsManagedActionBar(region)
+end
+
+function KongKontinued_IsManagedActionBarDisabled(region)
+	return A.FramePresetTransparency and A.FramePresetTransparency.IsManagedActionBarDisabled(region)
+end
+
+local function IsReplacedActionBarPreset(region, setting)
+	return setting and setting.preset and A.FramePresetTransparency
+		and A.FramePresetTransparency.IsDefaultActionBarReplaced(region)
+end
+
+local function IsFrameInactive(region, setting)
+	return not setting or setting.presetDisabled or KongKontinued_IsManagedActionBarDisabled(region)
+		or IsReplacedActionBarPreset(region, setting)
+end
+
 local function IsPresetTransparencyBlocked(region, setting)
 	return HasPresetTransparencyGuard(region, setting) and A.FramePresetTransparency.GetUnavailableReason(region) ~= nil
 end
@@ -64,6 +82,10 @@ local function GetFadeEventRegion(region)
 end
 
 local function SetFrameShown(region, shown)
+	if KongKontinued_IsManagedActionBar(region) or IsReplacedActionBarPreset(region, KongKontinued_Frames[region]) then
+		PendingVisibility[region] = nil
+		return
+	end
 	if not R.Fader.canAccess(FADER, region) then
 		PendingVisibility[region] = shown
 		return
@@ -441,6 +463,8 @@ function KongKontinued_OverrideAlpha(region, override)
 	local state = AlphaOverrides[region]
 
 	if ( override and KongKontinued_Settings.enabled and R.Fader.canAccess(FADER, region)
+		and not KongKontinued_IsManagedActionBar(region)
+		and not IsFrameInactive(region, KongKontinued_Frames[region])
 		and not IsPresetTransparencyBlocked(region, KongKontinued_Frames[region]) ) then
 		if ( state ~= nil ) then return end
 		state = {
@@ -472,11 +496,12 @@ end
 function KongKontinued_Fade(region, fromAlpha, toAlpha, duration, startDelay)
 	if ( KongKontinued_Settings.enabled and (KongKontinuedConfig == nil or not KongKontinuedConfig:IsShown()) ) then
 		local setting = KongKontinued_Frames[region]
+		if setting and IsFrameInactive(region, setting) then return end
 		if HasPresetTransparencyGuard(region, setting) and not A.FramePresetTransparency.CanFade(region) then return end
 		local target, writer = region
 		if IsMinimapPreset(region, setting) then
 			target = A.MinimapPreset.Acquire()
-		elseif setting and setting.preset and PresetOriginalAlpha[region] == nil then
+		elseif setting and (setting.preset or KongKontinued_IsManagedActionBar(region)) and PresetOriginalAlpha[region] == nil then
 			PresetOriginalAlpha[region] = GetPendingRestoreAlpha(region) or R.Fader.getAlpha(FADER, region)
 			if PresetOriginalAlpha[region] == nil then return end
 		end
@@ -505,7 +530,7 @@ local function RestoreFrame(region, preserveAlpha)
 	end
 	local alpha = 1
 	local checkOwnership
-	if setting.preset then
+	if setting.preset or KongKontinued_IsManagedActionBar(region) then
 		alpha = PresetOriginalAlpha[region] or GetPendingRestoreAlpha(region)
 		PresetOriginalAlpha[region] = nil
 		if alpha == nil then return end
@@ -519,7 +544,9 @@ local function RestoreFrame(region, preserveAlpha)
 end
 
 function KongKontinued_UpdateFrameVisibility(region)
-	if IsPresetTransparencyBlocked(region, KongKontinued_Frames[region]) then return end
+	local setting = KongKontinued_Frames[region]
+	if IsFrameInactive(region, setting) or KongKontinued_IsManagedActionBar(region)
+		or IsPresetTransparencyBlocked(region, setting) then return end
 	if not KongKontinued_Frames[region].hideAtZeroAlpha then
 		local reveal = HiddenFrames[region] or PendingVisibility[region] == true
 		PendingVisibility[region] = nil
@@ -553,6 +580,7 @@ end
 
 function A.CalculateFadeIn(region)
 	local setting = KongKontinued_Frames[region]
+	if IsFrameInactive(region, setting) then return end
 	local currentAlpha = GetFrameFadeAlpha(region)
 	local chosenTrigger
 	
@@ -603,6 +631,7 @@ end
 
 function KongKontinued_CalculateFadeOut(region)
 	local setting = KongKontinued_Frames[region]
+	if IsFrameInactive(region, setting) then return end
 	local currentAlpha = GetFrameFadeAlpha(region)
 	local endAlpha = setting.TriggerDefaults.alphaOut
 	local activeAlpha
@@ -699,6 +728,59 @@ function A.OnFramePresetAvailabilityChanged(region, available)
 	end
 end
 
+function A.OnDefaultActionBarSupportChanged()
+	InvalidateMouseover()
+	for region, setting in pairs(KongKontinued_Frames) do
+		if setting.preset and A.FramePresetTransparency.IsDefaultActionBar(region) then
+			if IsReplacedActionBarPreset(region, setting) then
+				RestoreFrame(region)
+			elseif KongKontinued_Settings.enabled and not setting.presetDisabled then
+				KongKontinued_OverrideAlpha(region, setting.overrideAlpha)
+				A.RefreshPresetFade(region)
+			end
+		end
+	end
+end
+
+function A.OnManagedActionBarEnabledChanged(region, enabled)
+	local setting = KongKontinued_Frames[region]
+	if not setting then return end
+	InvalidateMouseover()
+	if not enabled then
+		RestoreFrame(region)
+	elseif not setting.preset and KongKontinued_Settings.enabled then
+		A.RefreshPresetFade(region)
+	end
+end
+
+function A.OnManagedActionBarAlphaRestored(region)
+	if PresetOriginalAlpha[region] ~= nil then PresetOriginalAlpha[region] = 1 end
+	PendingRestores[region] = nil
+end
+
+function KongKontinued_SetPresetEnabled(region, enabled)
+	local setting = KongKontinued_Frames[region]
+	if not setting or not setting.preset or (setting.presetDisabled ~= true) == enabled then return end
+	InvalidateMouseover()
+	setting.presetDisabled = not enabled or nil
+	if enabled then
+		KongKontinued_OverrideAlpha(region, setting.overrideAlpha)
+		A.RefreshPresetFade(region)
+	else
+		RestoreFrame(region)
+	end
+end
+
+function KongKontinued_UseManualActionBarFading(region)
+	local setting = KongKontinued_Frames[region]
+	if InCombatLockdown() or not setting or not setting.preset or not KongKontinued_IsManagedActionBar(region)
+		or KongKontinued_IsManagedActionBarDisabled(region) then return end
+	setting.preset, setting.presetDisabled = nil, nil
+	InvalidateMouseover()
+	A.RefreshPresetFade(region)
+	return true
+end
+
 function A.CreateTrigger(Frame)
 
 	local Trigger = {}
@@ -713,7 +795,7 @@ function A.CreateTrigger(Frame)
 	return Trigger
 end
 
-function KongKontinued_RegisterFrame(region, presetPath)
+function KongKontinued_RegisterFrame(region, presetPath, presetDisabled)
 	if not KongKontinued_CanAccessFrame(region) then return end
 	InvalidateMouseover()
 	KongKontinued_Frames[region] = {}
@@ -727,6 +809,7 @@ function KongKontinued_RegisterFrame(region, presetPath)
 	KongKontinued_Frames[region].version = VERSION
 	if presetPath then
 		KongKontinued_Frames[region].preset = true
+		KongKontinued_Frames[region].presetDisabled = presetDisabled
 		RememberChatPreset(region, index)
 	end
 	KongKontinued_Frames[region].TriggerDefaults = A.CreateTrigger(region)
@@ -998,7 +1081,7 @@ end
 
 function A.FindFirstTrackedRegion(region)
 	while KongKontinued_CanAccessFrame(region) do
-		if KongKontinued_Frames[region] ~= nil then return region end
+		if not IsFrameInactive(region, KongKontinued_Frames[region]) then return region end
 		region = KongKontinued_GetFrameParent(region)
 	end
 end
@@ -1006,7 +1089,7 @@ end
 function A.ForEachTrackedRegion(region, func, ...)
 	if issecretvalue and issecretvalue(region) then return end
 	while ( region ~= nil ) do
-		if ( KongKontinued_Frames[region] ~= nil ) then func(region, ...) end
+		if not IsFrameInactive(region, KongKontinued_Frames[region]) then func(region, ...) end
 		region = KongKontinued_GetFrameParent(region)
 	end
 end

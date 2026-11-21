@@ -1,4 +1,6 @@
 local KONG_CONFIG_COLUMN_WIDTH = 166
+local manualFadingButton
+local manualFadingWarning = "Transparency may behave unexpectedly while another addon controls opacity"
 local COLOR_UNREGISTERED = {.3, .3, 1, .7}
 local COLOR_REGISTERED = {.3, 1, .3, .7}
 local COLOR_SELECTED = {1, .3, .6, .7}
@@ -941,6 +943,32 @@ function KongKontinuedConfig_UpdatePersistAsPullout(pullout)
     itemFrame:SetHeight(height)
 end
 
+local function UpdateManualFadingButton(region)
+    local group = KongKontinuedConfig_AdvancedGroup
+    if region and not manualFadingButton then
+        local button = AceGUI:Create("Button")
+        button:SetWidth(KONG_CONFIG_COLUMN_WIDTH)
+        button:SetText("Use manual fading")
+        button:SetUserData(TOOLTIP, manualFadingWarning)
+        button:SetCallback("OnEnter", KongKontinuedConfig_UpdateTooltip)
+        button:SetCallback("OnLeave", KongKontinuedConfig_UpdateTooltip)
+        button:SetCallback("OnClick", function(widget)
+            if KongKontinued_UseManualActionBarFading(widget:GetUserData(FRAME)) then
+                KongKontinuedConfig:SetStatusText(manualFadingWarning)
+                KongKontinuedConfig_UpdateComponents()
+            end
+        end)
+        manualFadingButton = button
+        group:AddChild(button)
+    elseif not region and manualFadingButton then
+        table.remove(group.children)
+        manualFadingButton:Release()
+        manualFadingButton = nil
+        group:DoLayout()
+    end
+    if manualFadingButton then manualFadingButton:SetUserData(FRAME, region) end
+end
+
 function KongKontinuedConfig_UpdateComponents()
 
     KongKontinuedConfig_FadeCheckBox:SetUserData(true, nil)
@@ -965,12 +993,19 @@ function KongKontinuedConfig_UpdateComponents()
     
     local Defaults = KongKontinuedConfig_DefaultsGroup:GetUserData(TRIGGERS)
     table.wipe(Defaults)
+    local managedBar, hasManagedBar
     
     for _, SelectedFrame in pairs(KongKontinuedConfig_SelectedFrames) do
+        local region = SelectedFrame.uiFrame
+        if KongKontinued_IsManagedActionBar(region) then
+            hasManagedBar = true
+            local setting = KongKontinued_Frames[region]
+            if setting and setting.preset and not KongKontinued_IsManagedActionBarDisabled(region) then managedBar = region end
+        end
         
         if KongKontinued_Frames[SelectedFrame.uiFrame] then
             
-            KongKontinuedConfig_FadeCheckBox:SetUserData(true, true)
+            KongKontinuedConfig_FadeCheckBox:SetUserData(not KongKontinued_Frames[region].presetDisabled, true)
             
             local TriggerDefaults = KongKontinued_Frames[SelectedFrame.uiFrame].TriggerDefaults
             KongKontinuedConfig_HiddenAlphaCheckBox:SetUserData(nil ~= rawget(TriggerDefaults, "alphaOut"), true)
@@ -1018,9 +1053,12 @@ function KongKontinuedConfig_UpdateComponents()
     KongKontinuedConfig_GroupsComboBox:SetDisabled(not fade)
     KongKontinuedConfig_NewGroupEditBox:SetDisabled(not fade)
     
-    KongKontinuedConfig_OverrideAlphaCheckBox:SetDisabled(not fade)
-    KongKontinuedConfig_HideAtZeroAlphaCheckBox:SetDisabled(not fade)
+    KongKontinuedConfig_OverrideAlphaCheckBox:SetDisabled(not fade or hasManagedBar)
+    KongKontinuedConfig_HideAtZeroAlphaCheckBox:SetDisabled(not fade or hasManagedBar)
     local selectedFrame = next(KongKontinuedConfig_SelectedFrames)
+    UpdateManualFadingButton(selectedFrame and not next(KongKontinuedConfig_SelectedFrames, selectedFrame) and managedBar)
+    local fadeTooltip = "Registers the selected frame(s) to be controlled by Kong"
+    KongKontinuedConfig_FadeCheckBox:SetUserData(TOOLTIP, hasManagedBar and fadeTooltip .. "\n\n" .. manualFadingWarning or fadeTooltip)
     KongKontinuedConfig_PersistAsDropDown:SetDisabled(not (fade and selectedFrame and not next(KongKontinuedConfig_SelectedFrames, selectedFrame)))
     
     -- Slider display
@@ -1396,14 +1434,23 @@ function KongKontinuedConfig_FadeCheckBox_OnValueChanged()
     local hide = KongKontinuedConfig_FadeCheckBox:GetValue()
     if hide then
         for frame in pairs(KongKontinuedConfig_SelectedFrames) do
-            if not KongKontinued_Frames[frame.uiFrame] then
-                KongKontinued_RegisterFrame(frame.uiFrame)
+            local region = frame.uiFrame
+            if not KongKontinued_IsManagedActionBarDisabled(region) then
+                if not KongKontinued_Frames[region] then
+                    KongKontinued_RegisterFrame(region)
+                    if KongKontinued_IsManagedActionBar(region) then KongKontinuedConfig:SetStatusText(manualFadingWarning) end
+                else
+                    KongKontinued_SetPresetEnabled(region, true)
+                end
             end
         end
     else
         for frame in pairs(KongKontinuedConfig_SelectedFrames) do
-            if KongKontinued_Frames[frame.uiFrame] then
-                KongKontinued_UnregisterFrame(frame.uiFrame)
+            local region = frame.uiFrame
+            local setting = KongKontinued_Frames[region]
+            if setting then
+                if setting.preset then KongKontinued_SetPresetEnabled(region, false)
+                else KongKontinued_UnregisterFrame(region) end
             end
         end
     end
@@ -1506,8 +1553,10 @@ function KongKontinuedConfig_OverrideAlphaCheckBox_OnValueChanged(self)
     local override = self:GetValue()
 
     for Frame in pairs(KongKontinuedConfig_SelectedFrames) do
-        KongKontinued_Frames[Frame.uiFrame].overrideAlpha = override
-        KongKontinued_OverrideAlpha(Frame.uiFrame, override)
+        if not KongKontinued_IsManagedActionBar(Frame.uiFrame) then
+            KongKontinued_Frames[Frame.uiFrame].overrideAlpha = override
+            KongKontinued_OverrideAlpha(Frame.uiFrame, override)
+        end
     end
     
     KongKontinuedConfig_UpdateComponents()
@@ -1517,8 +1566,10 @@ function KongKontinuedConfig_HideAtZeroAlpha_OnValueChanged(self)
 	KongKontinuedConfig:SetStatusText("")
 	
 	for frame in pairs(KongKontinuedConfig_SelectedFrames) do
-		KongKontinued_Frames[frame.uiFrame].hideAtZeroAlpha = self:GetValue()
-		KongKontinued_UpdateFrameVisibility(frame.uiFrame)
+		if not KongKontinued_IsManagedActionBar(frame.uiFrame) then
+			KongKontinued_Frames[frame.uiFrame].hideAtZeroAlpha = self:GetValue()
+			KongKontinued_UpdateFrameVisibility(frame.uiFrame)
+		end
 	end
 	
 	KongKontinuedConfig_UpdateComponents()

@@ -6,16 +6,7 @@ local advancedTooltip = "This frame already has an advanced config applied. Sele
 local sliderLabels = {"Idle", "Mouseover", "Combat"}
 local sliderTop, entryTop, sectionGap = 63, 109, 38
 local introTop, columnGutter, maxRowWidth = 54, 24, 264
-local nativeBars = {
-    {"MainActionBar", "Action Bar 1"},
-    {"MultiBarBottomLeft", "Action Bar 2", "MultiBar1_IsVisible"},
-    {"MultiBarBottomRight", "Action Bar 3", "MultiBar2_IsVisible"},
-    {"MultiBarRight", "Action Bar 4", "MultiBar3_IsVisible"},
-    {"MultiBarLeft", "Action Bar 5", "MultiBar4_IsVisible"},
-    {"MultiBar5", "Action Bar 6", "MultiBar5_IsVisible"},
-    {"MultiBar6", "Action Bar 7", "MultiBar6_IsVisible"},
-    {"MultiBar7", "Action Bar 8", "MultiBar7_IsVisible"},
-}
+local nativeBars = A.FramePresetTransparency.DefaultActionBars
 local actionBarSection = {title = "Action Bars", group = true}
 local sections = {
     {title = "Objective Tracker", global = "ObjectiveTrackerFrame"},
@@ -42,6 +33,16 @@ local function FindEntries(section)
         entries[1] = {name = section.global, title = section.title, region = _G[section.global],
             getUnavailableReason = section.getUnavailableReason}
     elseif section == actionBarSection then
+        local transparency = A.FramePresetTransparency
+        local support = transparency.GetActionBarSupport()
+        if support then
+            support.ForEachBar(function(region, name, title, enabled)
+                entries[#entries + 1] = {name = name, title = title, region = region,
+                    disabledReason = not enabled and support.disabledReason or nil,
+                    getUnavailableReason = transparency.GetUnavailableReason}
+            end)
+            return entries, support
+        end
         for _, bar in ipairs(nativeBars) do
             local name, title, predicate = unpack(bar)
             local region = _G[name]
@@ -79,12 +80,14 @@ local function FindSetting(entry, resolvedFrames)
     -- second configuration while that frame's existing rule is pending.
     for _, candidate in ipairs(KongKontinued_Settings.Frames) do
         if candidate.index == path then return candidate end
-        local region = resolvedFrames and resolvedFrames[candidate]
-        if region == nil then
-            region = A.ResolveSavedFrame(candidate) or false
-            if resolvedFrames then resolvedFrames[candidate] = region end
+        if entry.region then
+            local region = resolvedFrames and resolvedFrames[candidate]
+            if region == nil then
+                region = A.ResolveSavedFrame(candidate) or false
+                if resolvedFrames then resolvedFrames[candidate] = region end
+            end
+            if region == entry.region then return candidate end
         end
-        if region == entry.region then return candidate end
     end
 end
 
@@ -116,7 +119,9 @@ end
 
 local function GetState(entry, resolvedFrames)
     local region = entry.region
-    if not KongKontinued_Initialized or not KongKontinued_CanAccessFrame(region) then return "unavailable" end
+    if not KongKontinued_Initialized then return "unavailable" end
+    if entry.disabledReason then return "disabled", FindSetting(entry, resolvedFrames), entry.disabledReason end
+    if not KongKontinued_CanAccessFrame(region) then return "unavailable" end
     local setting = FindSetting(entry, resolvedFrames)
     local reason, source
     if entry.getUnavailableReason then reason, source = entry.getUnavailableReason(region) end
@@ -124,15 +129,17 @@ local function GetState(entry, resolvedFrames)
     if KongKontinued_Frames[region] ~= setting then return "unavailable", nil, reason, source end
     if reason then return "suspended", setting, reason, source end
     if not ContainsOnlyOpacityChanges(setting, entry) then return "advanced", setting end
+    if setting.presetDisabled then return "off", setting end
     return "on", setting
 end
 
 local function SetEnabled(entry, enabled)
-    local state = GetState(entry)
+    local state, setting = GetState(entry)
     if enabled and state == "off" then
-        KongKontinued_RegisterFrame(entry.region, FramePath(entry.name))
+        if setting then KongKontinued_SetPresetEnabled(entry.region, true)
+        else KongKontinued_RegisterFrame(entry.region, FramePath(entry.name)) end
     elseif not enabled and state == "on" then
-        KongKontinued_UnregisterFrame(entry.region)
+        KongKontinued_SetPresetEnabled(entry.region, false)
     end
 end
 
@@ -156,7 +163,7 @@ end
 
 local function GetResetMode(entry, state, setting, individual)
     if not setting or not (individual or setting.preset == true) then return end
-    if state == "on" or state == "advanced" then return "defaults" end
+    if state == "on" or state == "off" or state == "advanced" then return "defaults" end
     if individual and state == "suspended" and not ContainsOnlyOpacityChanges(setting, entry) then return "clear" end
 end
 
@@ -186,11 +193,12 @@ local function ResetEntries(request)
     if not panel:IsVisible() or not A.CanModifyProfiles() or not A.IsCurrentProfileTarget(request.profile) then return end
     local current = FindEntries(request.section)
     local listed = {}
-    for _, entry in ipairs(current) do listed[entry.region or entry.name] = true end
+    for _, entry in ipairs(current) do listed[entry.region or entry.name] = entry end
     for _, candidate in ipairs(request.entries) do
-        local entry = candidate.entry
+        local entry = listed[candidate.entry.region]
+        if not entry then return end
         local state, setting = GetState(entry)
-        if not listed[entry.region] or setting ~= candidate.setting then return end
+        if setting ~= candidate.setting then return end
         if GetResetMode(entry, state, setting, request.individual) ~= candidate.mode then
             KongKontinued_Warning("Preset availability changed. Open Reset again to review the changes.")
             return
@@ -205,7 +213,9 @@ local function ResetEntries(request)
         local entry = candidate.entry
         local region = entry.region
         KongKontinued_UnregisterFrame(region, candidate.mode == "clear")
-        if candidate.mode == "defaults" then KongKontinued_RegisterFrame(region, FramePath(entry.name)) end
+        if candidate.mode == "defaults" then
+            KongKontinued_RegisterFrame(region, FramePath(entry.name), candidate.setting.presetDisabled)
+        end
     end
     A.RefreshPresetOptions()
 end
@@ -298,7 +308,8 @@ end
 local function ShowUnavailableTooltip(frame)
     if not frame.reason then return end
     GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
-    A.SetTooltipText(GameTooltip, frame.title, frame.reason)
+    if frame.title then A.SetTooltipText(GameTooltip, frame.title, frame.reason)
+    else GameTooltip:SetText(frame.reason, 1, 1, 1, true) end
     if frame.source then GameTooltip:AddLine("Likely source: " .. frame.source, .75, .75, .75, true) end
     if frame.showConfigWarning then
         if frame.source then GameTooltip:AddLine(" ") end
@@ -342,13 +353,20 @@ local function CreateFrameRow(section)
     row.check:SetPoint("LEFT", row, "LEFT")
     row.reset = CreateButton(row, "Reset", function() RequestReset(section, row.entry) end)
     row.reset:SetPoint("RIGHT", row, "RIGHT")
-    row.config = CreateButton(row, "Config", function() A.ShowAdvancedConfig(row.entry.region) end)
+    row.config = CreateButton(row, "Config", function()
+        local entry = row.entry
+        if not entry.disabledReason and not KongKontinued_IsManagedActionBarDisabled(entry.region) then
+            A.ShowAdvancedConfig(entry.region)
+        end
+    end)
     row.config:SetPoint("RIGHT", row.reset, "LEFT", -3, 0)
     row.label = CreateLabel(row, "", "GameFontHighlightSmall")
     row.label:SetPoint("LEFT", row.check, "RIGHT", 2, 4)
     row.label:SetPoint("RIGHT", row.config, "LEFT", -3, 4)
     row.label:SetWordWrap(false)
-    if section.getUnavailableReason then row.unavailableTooltip = CreateUnavailableTooltip(row, row.check, row.label) end
+    if section.getUnavailableReason or section == actionBarSection then
+        row.unavailableTooltip = CreateUnavailableTooltip(row, row.check, row.label)
+    end
     row.status = CreateLabel(row, "", "GameFontHighlightSmall")
     row.status:SetTextColor(.65, .65, .65)
     row.status:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", 0, -1)
@@ -402,6 +420,14 @@ local function CreateSection(section)
     divider:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -26)
     divider:SetHeight(2)
 
+    if section == actionBarSection then
+        section.noticeTitle = CreateLabel(frame, "", "GameFontNormal")
+        section.noticeTitle:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -39)
+        section.noticeText = CreateLabel(frame, "", "GameFontHighlightSmall")
+        section.noticeText:SetPoint("TOPLEFT", section.noticeTitle, "BOTTOMLEFT", 0, -4)
+        section.noticeText:SetWordWrap(true)
+    end
+
     section.sliders, section.rows = {}, {}
     for index, label in ipairs(sliderLabels) do
         local sliderIndex = index
@@ -437,8 +463,20 @@ function A.RefreshPresetOptions()
     local y = math.max(introHeight, 16) + introTop + 17
     local resolvedFrames = {}
     for _, section in ipairs(sections) do
-        if not locked then section.entries = FindEntries(section) end
+        if not locked then section.entries, section.support = FindEntries(section) end
         local entries = section.entries or {}
+        local noticeHeight = 0
+        if section.noticeTitle then
+            local support = section.support
+            section.noticeTitle:SetShown(support ~= nil)
+            section.noticeText:SetShown(support ~= nil)
+            if support then
+                section.noticeTitle:SetText(support.noticeTitle)
+                section.noticeText:SetText(support.noticeText)
+                section.noticeText:SetWidth(width)
+                noticeHeight = section.noticeTitle:GetStringHeight() + section.noticeText:GetStringHeight() + 14
+            end
+        end
         local columnCount = width >= 440 and 2 or 1
         local columnWidth = (width - (columnCount - 1) * columnGutter) / columnCount
         local rowWidth = math.min(columnWidth, maxRowWidth)
@@ -461,9 +499,9 @@ function A.RefreshPresetOptions()
                     elseif values[j] ~= value then mixed[j] = true end
                 end
             end
-            local status = state == "advanced" and advancedTitle
-                or (state == "unavailable" or state == "suspended") and "Unavailable" or ""
-            local configurable = usable and KongKontinued_CanAccessFrame(entry.region)
+            local status = state == "advanced" and advancedTitle or state == "disabled" and "Disabled"
+                or reason and "Blocked" or state == "unavailable" and "Unavailable" or ""
+            local configurable = usable and state ~= "disabled" and KongKontinued_CanAccessFrame(entry.region)
             if section.group then
                 local row = section.rows[i]
                 if not row then
@@ -473,33 +511,35 @@ function A.RefreshPresetOptions()
                 row.entry = entry
                 row:ClearAllPoints()
                 row:SetPoint("TOPLEFT", section.frame, "TOPLEFT",
-                    ((i - 1) % columnCount) * (columnWidth + columnGutter), -entryTop - math.floor((i - 1) / columnCount) * 33)
+                    ((i - 1) % columnCount) * (columnWidth + columnGutter),
+                    -entryTop - noticeHeight - math.floor((i - 1) / columnCount) * 33)
                 row:SetWidth(rowWidth)
                 row.label:SetText(entry.title:gsub("|", "||"))
                 row.status:SetWidth(rowWidth - 32)
                 row.status:SetText(status)
-                row.check:SetChecked(state == "on" or state == "advanced" or state == "suspended")
+                row.check:SetChecked(setting ~= nil and not setting.presetDisabled)
                 row.check:SetEnabled(usable and (state == "on" or state == "off"))
                 row.check:SetTooltipFunc(state == "advanced" and ShowAdvancedConfigTooltip or nil)
                 row.config:SetEnabled(configurable)
                 row.reset:SetEnabled(usable and GetResetMode(entry, state, setting, true) ~= nil)
                 if row.unavailableTooltip then
-                    if reason then
+                    if reason and section.getUnavailableReason then
                         blocked = blocked + 1
                         if blocked == 1 then unavailableReason = reason
                         elseif unavailableReason ~= reason then unavailableReason = "See the blocked chat frames below for details" end
                     end
                     row.check:SetAlpha(reason and .55 or 1)
                     row.label:SetAlpha(reason and .55 or 1)
-                    UpdateUnavailableTooltip(row.unavailableTooltip, row.label:GetText() .. " preset unavailable",
-                        reason, source, configurable and reason ~= nil)
+                    local title = state ~= "disabled" and row.label:GetText() .. " preset unavailable" or nil
+                    row.unavailableTooltip:SetPoint("RIGHT", state == "disabled" and row or row.label, "RIGHT", 2, 0)
+                    UpdateUnavailableTooltip(row.unavailableTooltip, title, reason, source, configurable and reason ~= nil)
                 end
                 row:Show()
             else
                 advancedConfig = state == "advanced"
                 section.status:SetText(status)
                 section.config:SetEnabled(configurable)
-                section.check:SetChecked(state == "on" or advancedConfig or state == "suspended")
+                section.check:SetChecked(setting ~= nil and not setting.presetDisabled)
                 if section.unavailableTooltip then
                     if state == "unavailable" or state == "suspended" then
                         unavailableReason, likelySource = reason or "The frame configuration is unavailable", source
@@ -540,12 +580,12 @@ function A.RefreshPresetOptions()
             slider.label:SetText(display and (sliderLabels[i] .. "  " .. display) or sliderLabels[i])
             slider:SetWidth(sliderWidth)
             slider:ClearAllPoints()
-            slider:SetPoint("TOPLEFT", section.frame, "TOPLEFT", (i - 1) * (sliderWidth + 16), -sliderTop)
+            slider:SetPoint("TOPLEFT", section.frame, "TOPLEFT", (i - 1) * (sliderWidth + 16), -sliderTop - noticeHeight)
             slider:SetValue(value and value * 100 or 0)
             slider:SetEnabled(usable and enabled > 0)
             slider.label:SetAlpha(usable and enabled > 0 and 1 or .5)
         end
-        local height = entryTop + 3
+        local height = entryTop + 3 + noticeHeight
         if section.group then height = height + math.ceil(#entries / columnCount) * 33
         elseif section.status:GetText() ~= "" then height = height + 14 end
         section.frame:ClearAllPoints()

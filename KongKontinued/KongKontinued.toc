@@ -20,5 +20,6 @@ CommandLine.lua
 AddonAttribution.lua
 MinimapPreset.lua
 FramePresetTransparency.lua
+AddonSupport\KongKontinued-Bartender4.lua
 Presets.lua
 Options.lua

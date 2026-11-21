@@ -309,6 +309,9 @@ local function profile(source, definitions, report, copyPresets)
                 expect(type(value) == "boolean", key .. " must be a boolean"); frame[key] = value
             elseif key == "preset" and copyPresets then
                 expect(value == true, "Invalid frame preset marker"); frame.preset = true
+            elseif key == "presetDisabled" and copyPresets then
+                expect(old.preset == true and value == true, "Invalid disabled preset marker")
+                frame.presetDisabled = true
             else
                 expect(key == "index" or key == "version" or key == "TriggerDefaults" or transient[key], "Unsupported frame field: " .. tostring(key))
             end

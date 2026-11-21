@@ -10,9 +10,24 @@ local alphaTolerance = .001
 local attributionInterval = 1
 local playerTransparencyConflict = "Another addon may be controlling player frame transparency"
 local targetTransparencyConflict = "Another addon may be controlling target frame transparency"
+local actionBarTransparencyConflict = "Another addon may be controlling this bar's opacity"
 local chatTransparencyConflict = "Another addon may be controlling chat frame transparency"
 local chatTextTransparencyConflict = "Another addon may be controlling chat text transparency"
 local refreshQueued
+local activeActionBarSupport
+
+Transparency.DefaultActionBars = {
+    {"MainActionBar", "Action Bar 1"},
+    {"MultiBarBottomLeft", "Action Bar 2", "MultiBar1_IsVisible"},
+    {"MultiBarBottomRight", "Action Bar 3", "MultiBar2_IsVisible"},
+    {"MultiBarRight", "Action Bar 4", "MultiBar3_IsVisible"},
+    {"MultiBarLeft", "Action Bar 5", "MultiBar4_IsVisible"},
+    {"MultiBar5", "Action Bar 6", "MultiBar5_IsVisible"},
+    {"MultiBar6", "Action Bar 7", "MultiBar6_IsVisible"},
+    {"MultiBar7", "Action Bar 8", "MultiBar7_IsVisible"},
+}
+local defaultActionBarNames = {MainMenuBar = true}
+for _, bar in ipairs(Transparency.DefaultActionBars) do defaultActionBarNames[bar[1]] = true end
 
 local function IsPublic(value)
     return not (issecretvalue and issecretvalue(value))
@@ -42,8 +57,33 @@ function Transparency.ForEachChatFrame(callback)
     end)
 end
 
+function Transparency.GetActionBarSupport()
+    local support = A.ActionBarPresetSupport
+    if support and support.IsActive() then return support end
+end
+
+function Transparency.IsManagedActionBar(region)
+    local support = A.ActionBarPresetSupport
+    return support and support.OwnsBar(region)
+end
+
+function Transparency.IsManagedActionBarDisabled(region)
+    return Transparency.IsManagedActionBar(region) and A.ActionBarPresetSupport.IsBarDisabled(region)
+end
+
+function Transparency.IsDefaultActionBar(region)
+    if not KongKontinued_CanAccessFrame(region) or not region.GetName then return false end
+    local name = region:GetName()
+    return IsPublic(name) and defaultActionBarNames[name] and _G[name] == region
+end
+
+function Transparency.IsDefaultActionBarReplaced(region)
+    return Transparency.GetActionBarSupport() ~= nil and Transparency.IsDefaultActionBar(region)
+end
+
 function Transparency.Tracks(region)
-    return IsPublic(region) and (region == PlayerFrame or region == TargetFrame or chatFrames[region] ~= nil)
+    return IsPublic(region) and (region == PlayerFrame or region == TargetFrame or chatFrames[region] ~= nil
+        or Transparency.IsManagedActionBar(region))
 end
 
 function Transparency.Handles(region)
@@ -57,6 +97,15 @@ local function QueueRefresh()
         refreshQueued = nil
         Transparency.Refresh()
     end)
+end
+
+function Transparency.OnNativeActionBarAlphaSet(region)
+    local state = records[region]
+    if not state or not (state.lastAlpha or state.externalAlpha) or ReadAlpha(region) ~= 1 then return end
+    state.lastAlpha, state.externalAlpha, state.alphaSource = nil, nil, nil
+    state.paused = true
+    A.OnManagedActionBarAlphaRestored(region)
+    QueueRefresh()
 end
 
 local function GetChatTextConflict(region)
@@ -98,9 +147,15 @@ local function Observe(region)
     records[region] = state
     if hooksecurefunc then
         pcall(hooksecurefunc, region, "SetAlpha", function(self)
-            if state.writing or state.externalAlpha then return end
+            if state.writing then return end
+            local isActionBar = Transparency.IsManagedActionBar(self)
+            if state.externalAlpha and (not isActionBar or state.lastAlpha == nil) then return end
             local alpha = ReadAlpha(self)
-            if alpha and math.abs(alpha - (state.lastAlpha or 1)) > alphaTolerance then
+            local changed = alpha and math.abs(alpha - (state.lastAlpha or 1)) > alphaTolerance
+            -- A write by another owner ends our claim even if the value matches.
+            if changed or (isActionBar and state.lastAlpha ~= nil) then
+                if isActionBar then state.lastAlpha = nil end
+                if state.externalAlpha then return end
                 state.externalAlpha, state.alphaSource = true, Attribution.FromStack()
                 QueueRefresh()
             end
@@ -119,7 +174,12 @@ function Transparency.GetUnavailableReason(region)
     if chatFrames[region] and (not IsPublic(region.isTemporary) or region.isTemporary) then
         return "This chat window is unavailable for presets"
     end
-    local transparencyConflict = chatFrames[region] and chatTransparencyConflict
+    local isActionBar = Transparency.IsManagedActionBar(region)
+    if isActionBar then
+        local reason = A.ActionBarPresetSupport.GetUnavailableReason(region)
+        if reason then return reason end
+    end
+    local transparencyConflict = isActionBar and actionBarTransparencyConflict or chatFrames[region] and chatTransparencyConflict
         or (region == PlayerFrame and playerTransparencyConflict or targetTransparencyConflict)
     local state = Observe(region)
     local parent = KongKontinued_GetFrameParent(region)
@@ -169,6 +229,7 @@ end
 
 function Transparency.WriteAlpha(fader, region, alpha, guarded, writeAlpha)
     if not Transparency.Handles(region) then return false end
+    if Transparency.IsManagedActionBarDisabled(region) then return false end
     local state = Observe(region)
     if guarded then
         if not Transparency.CanFade(region) then return false end
@@ -181,7 +242,8 @@ end
 
 function Transparency.RestoreOwnedAlpha(fader, region, alpha, writeAlpha)
     local state = records[region]
-    if alpha == nil or not state or state.externalAlpha or state.writing
+    if alpha == nil or not state or state.writing
+        or (state.externalAlpha and not Transparency.IsManagedActionBar(region))
         or state.lastAlpha == nil or state.lastAlpha == alpha or not Transparency.Tracks(region) then return end
     -- False keeps the restore pending. Nil means there is nothing left to restore.
     if not KongKontinued_CanAccessFrame(region) then return false end
@@ -212,7 +274,27 @@ function Transparency.Refresh()
     Transparency.ForEachChatFrame(function(region)
         if RefreshFrame(region) then chatChanged = true end
     end)
-    if (playerChanged or targetChanged or chatChanged) and A.RefreshPresetOptions then A.RefreshPresetOptions() end
+    local support = Transparency.GetActionBarSupport()
+    local actionBarsChanged = support ~= activeActionBarSupport
+    activeActionBarSupport = support
+    if actionBarsChanged then A.OnDefaultActionBarSupportChanged() end
+    if support then
+        if support.ObserveNativeAlpha then support.ObserveNativeAlpha() end
+        support.ForEachBar(function(region, name, title, enabled)
+            if not region then return end
+            if RefreshFrame(region) then actionBarsChanged = true end
+            local state = records[region]
+            if state and state.listed ~= enabled then
+                local wasListed = state.listed
+                state.listed = enabled
+                if wasListed ~= nil then A.OnManagedActionBarEnabledChanged(region, enabled) end
+                actionBarsChanged = true
+            end
+        end)
+    end
+    if (playerChanged or targetChanged or chatChanged or actionBarsChanged) and A.RefreshPresetOptions then
+        A.RefreshPresetOptions()
+    end
 end
 
 Transparency.Refresh()
