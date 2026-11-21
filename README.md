@@ -37,7 +37,7 @@ Presets are off by default and use the selected profile. Check **Enable**
 for a preset, or select individual action bars or chat frames. Use **All**
 when available to toggle eligible frames in a group at once. Adjust **Idle**,
 **Mouseover** and **Combat** to set opacity in each state. Turning off a
-preset removes its preset rules from the selected profile.
+preset stops its fading and keeps its settings in the selected profile.
 
 Use **Config** to edit a frame in Advanced Config. If advanced rules or
 another addon limit a preset, hover over its controls for details. Use

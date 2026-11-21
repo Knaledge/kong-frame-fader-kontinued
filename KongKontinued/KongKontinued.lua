@@ -530,11 +530,13 @@ local function RestoreFrame(region, preserveAlpha)
 	end
 	local alpha = 1
 	local checkOwnership
-	if setting.preset or KongKontinued_IsManagedActionBar(region) then
-		alpha = PresetOriginalAlpha[region] or GetPendingRestoreAlpha(region)
+	local originalAlpha, pending = PresetOriginalAlpha[region], PendingRestores[region]
+	if setting.preset or originalAlpha ~= nil or (pending and pending.checkOwnership)
+		or KongKontinued_IsManagedActionBar(region) then
+		alpha = originalAlpha or (pending and pending.alpha)
 		PresetOriginalAlpha[region] = nil
 		if alpha == nil then return end
-		checkOwnership = A.FramePresetTransparency and A.FramePresetTransparency.Tracks(region)
+		checkOwnership = A.FramePresetTransparency and A.FramePresetTransparency.TracksRestore(region)
 	end
 	if preserveAlpha and not checkOwnership then
 		PendingRestores[region] = nil
@@ -753,8 +755,8 @@ function A.OnManagedActionBarEnabledChanged(region, enabled)
 	end
 end
 
-function A.OnManagedActionBarAlphaRestored(region)
-	if PresetOriginalAlpha[region] ~= nil then PresetOriginalAlpha[region] = 1 end
+function A.OnManagedActionBarNativeAlphaSet(region, alpha)
+	if PresetOriginalAlpha[region] ~= nil then PresetOriginalAlpha[region] = alpha end
 	PendingRestores[region] = nil
 end
 

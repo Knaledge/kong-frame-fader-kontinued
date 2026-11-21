@@ -62,15 +62,31 @@ function Support.IsBarDisabled(bar)
     return bar.disabled == true
 end
 
-function Support.ObserveNativeAlpha()
+function Support.ObserveBarChanges()
     local prototype = Bartender4 and Bartender4.Bar and Bartender4.Bar.prototype
-    Support.ObserveNativeAlpha = nil
-    if not hooksecurefunc or not prototype or type(prototype.SetConfigAlpha) ~= "function" then return end
+    local module = GetActionBars()
+    local transparency = A.FramePresetTransparency
+    Support.ObserveBarChanges = nil
+    if not hooksecurefunc then return end
 
     -- ApplyConfig and the secure fade driver can legitimately reapply the base opacity.
-    pcall(hooksecurefunc, prototype, "SetConfigAlpha", function(bar)
-        if Support.OwnsBar(bar) and not bar.faded and bar:GetConfigAlpha() == 1 then
-            A.FramePresetTransparency.OnNativeActionBarAlphaSet(bar)
+    if prototype and type(prototype.SetConfigAlpha) == "function" then
+        pcall(hooksecurefunc, prototype, "SetConfigAlpha", function(bar)
+            if Support.OwnsBar(bar) and not bar.faded then
+                transparency.OnNativeActionBarAlphaSet(bar, bar:GetConfigAlpha())
+            end
+        end)
+    end
+
+    local function OnBarStateChanged(owner, id)
+        local bar = owner.actionbars[tonumber(id)]
+        if Support.OwnsBar(bar) then
+            transparency.OnNativeActionBarEnabledChanged(bar, not bar.disabled)
         end
-    end)
+    end
+    for _, method in ipairs({"EnableBar", "DisableBar"}) do
+        if type(module[method]) == "function" then
+            pcall(hooksecurefunc, module, method, OnBarStateChanged)
+        end
+    end
 end

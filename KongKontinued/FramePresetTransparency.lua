@@ -15,6 +15,7 @@ local chatTransparencyConflict = "Another addon may be controlling chat frame tr
 local chatTextTransparencyConflict = "Another addon may be controlling chat text transparency"
 local refreshQueued
 local activeActionBarSupport
+local actionBarOptionsDirty
 
 Transparency.DefaultActionBars = {
     {"MainActionBar", "Action Bar 1"},
@@ -90,6 +91,12 @@ function Transparency.Handles(region)
     return Transparency.Tracks(region) and KongKontinued_CanAccessFrame(region)
 end
 
+function Transparency.TracksRestore(region)
+    if not IsPublic(region) then return false end
+    local state = records[region]
+    return (state and state.actionBar) or Transparency.Tracks(region)
+end
+
 local function QueueRefresh()
     if refreshQueued then return end
     refreshQueued = true
@@ -99,12 +106,13 @@ local function QueueRefresh()
     end)
 end
 
-function Transparency.OnNativeActionBarAlphaSet(region)
+function Transparency.OnNativeActionBarAlphaSet(region, alpha)
     local state = records[region]
-    if not state or not (state.lastAlpha or state.externalAlpha) or ReadAlpha(region) ~= 1 then return end
+    if not state or not IsPublic(alpha) or type(alpha) ~= "number" or ReadAlpha(region) ~= alpha then return end
+    A.OnManagedActionBarNativeAlphaSet(region, alpha)
+    if not (state.lastAlpha or state.externalAlpha) then return end
     state.lastAlpha, state.externalAlpha, state.alphaSource = nil, nil, nil
     state.paused = true
-    A.OnManagedActionBarAlphaRestored(region)
     QueueRefresh()
 end
 
@@ -143,18 +151,18 @@ end
 local function Observe(region)
     local state = records[region]
     if state then return state end
-    state = {}
+    -- Retain the bar identity while its frame methods are inaccessible.
+    state = {actionBar = Transparency.IsManagedActionBar(region)}
     records[region] = state
     if hooksecurefunc then
         pcall(hooksecurefunc, region, "SetAlpha", function(self)
             if state.writing then return end
-            local isActionBar = Transparency.IsManagedActionBar(self)
-            if state.externalAlpha and (not isActionBar or state.lastAlpha == nil) then return end
-            local alpha = ReadAlpha(self)
-            local changed = alpha and math.abs(alpha - (state.lastAlpha or 1)) > alphaTolerance
             -- A write by another owner ends our claim even if the value matches.
-            if changed or (isActionBar and state.lastAlpha ~= nil) then
-                if isActionBar then state.lastAlpha = nil end
+            local hadBarOwnership = state.actionBar and state.lastAlpha ~= nil
+            if state.externalAlpha and not hadBarOwnership then return end
+            local alpha = not hadBarOwnership and ReadAlpha(self)
+            if hadBarOwnership or (alpha and math.abs(alpha - (state.lastAlpha or 1)) > alphaTolerance) then
+                if hadBarOwnership then state.lastAlpha = nil end
                 if state.externalAlpha then return end
                 state.externalAlpha, state.alphaSource = true, Attribution.FromStack()
                 QueueRefresh()
@@ -243,10 +251,11 @@ end
 function Transparency.RestoreOwnedAlpha(fader, region, alpha, writeAlpha)
     local state = records[region]
     if alpha == nil or not state or state.writing
-        or (state.externalAlpha and not Transparency.IsManagedActionBar(region))
-        or state.lastAlpha == nil or state.lastAlpha == alpha or not Transparency.Tracks(region) then return end
+        or (state.externalAlpha and not state.actionBar)
+        or state.lastAlpha == nil or state.lastAlpha == alpha then return end
     -- False keeps the restore pending. Nil means there is nothing left to restore.
     if not KongKontinued_CanAccessFrame(region) then return false end
+    if not Transparency.Tracks(region) then return end
     if chatFrames[region] and (not IsPublic(region.isTemporary) or region.isTemporary) then return end
     local current = ReadAlpha(region)
     if current == nil then return false end
@@ -268,6 +277,26 @@ local function RefreshFrame(region)
     return true
 end
 
+local function RefreshActionBar(region, enabled)
+    if not region then return end
+    local changed = RefreshFrame(region)
+    local state = records[region]
+    if not state or state.listed == enabled then return changed end
+    local wasListed = state.listed
+    state.listed = enabled
+    if wasListed ~= nil then A.OnManagedActionBarEnabledChanged(region, enabled) end
+    return true
+end
+
+function Transparency.OnNativeActionBarEnabledChanged(region, enabled)
+    local state = records[region]
+    if state and state.listed == enabled then return end
+    if RefreshActionBar(region, enabled) then
+        actionBarOptionsDirty = true
+        QueueRefresh()
+    end
+end
+
 function Transparency.Refresh()
     local playerChanged, targetChanged = RefreshFrame(PlayerFrame), RefreshFrame(TargetFrame)
     local chatChanged
@@ -275,21 +304,15 @@ function Transparency.Refresh()
         if RefreshFrame(region) then chatChanged = true end
     end)
     local support = Transparency.GetActionBarSupport()
-    local actionBarsChanged = support ~= activeActionBarSupport
+    local supportChanged = support ~= activeActionBarSupport
     activeActionBarSupport = support
-    if actionBarsChanged then A.OnDefaultActionBarSupportChanged() end
+    local actionBarsChanged = supportChanged or actionBarOptionsDirty
+    actionBarOptionsDirty = nil
+    if supportChanged then A.OnDefaultActionBarSupportChanged() end
     if support then
-        if support.ObserveNativeAlpha then support.ObserveNativeAlpha() end
-        support.ForEachBar(function(region, name, title, enabled)
-            if not region then return end
-            if RefreshFrame(region) then actionBarsChanged = true end
-            local state = records[region]
-            if state and state.listed ~= enabled then
-                local wasListed = state.listed
-                state.listed = enabled
-                if wasListed ~= nil then A.OnManagedActionBarEnabledChanged(region, enabled) end
-                actionBarsChanged = true
-            end
+        if support.ObserveBarChanges then support.ObserveBarChanges() end
+        support.ForEachBar(function(region, _, _, enabled)
+            if RefreshActionBar(region, enabled) then actionBarsChanged = true end
         end)
     end
     if (playerChanged or targetChanged or chatChanged or actionBarsChanged) and A.RefreshPresetOptions then
