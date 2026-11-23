@@ -309,7 +309,7 @@ local function ShowUnavailableTooltip(frame)
     if not frame.reason then return end
     GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
     if frame.title then A.SetTooltipText(GameTooltip, frame.title, frame.reason)
-    else GameTooltip:SetText(frame.reason, 1, 1, 1, true) end
+    else GameTooltip:SetText(frame.reason, 1, 1, 1, 1, true) end
     if frame.source then GameTooltip:AddLine("Likely source: " .. frame.source, .75, .75, .75, true) end
     if frame.showConfigWarning then
         if frame.source then GameTooltip:AddLine(" ") end
