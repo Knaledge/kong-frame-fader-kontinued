@@ -116,6 +116,20 @@ function Transparency.OnNativeActionBarAlphaSet(region, alpha)
     QueueRefresh()
 end
 
+function Transparency.OnNativeActionBarLockChanged(region, unlocked)
+    local state = records[region]
+    if not state or unlocked == (state.actionBarUnlocked == true) then return end
+    state.actionBarUnlocked = unlocked or nil
+
+    -- Relocking can leave the bar at its native opacity without an observed write.
+    -- Reconcile that reset only for an eligible bar with no recorded external owner.
+    if not unlocked and state.lastAlpha ~= nil and not state.externalAlpha
+        and not A.ActionBarPresetSupport.GetUnavailableReason(region) then
+        Transparency.OnNativeActionBarAlphaSet(region, 1)
+    end
+    QueueRefresh()
+end
+
 local function GetChatTextConflict(region)
     -- The native line fade and decorative elements use other regions.
     local container = region.FontStringContainer

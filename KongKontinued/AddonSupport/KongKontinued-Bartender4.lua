@@ -105,6 +105,18 @@ function Support.ObserveBarChanges()
         end)
     end
 
+    if prototype then
+        for _, method in ipairs({"Unlock", "Lock"}) do
+            if type(prototype[method]) == "function" then
+                pcall(hooksecurefunc, prototype, method, function(bar)
+                    if Support.OwnsBar(bar) then
+                        transparency.OnNativeActionBarLockChanged(bar, not not bar.unlocked)
+                    end
+                end)
+            end
+        end
+    end
+
     local function OnBarStateChanged(owner, id)
         local bar = owner.actionbars[tonumber(id)]
         if Support.OwnsBar(bar) then
