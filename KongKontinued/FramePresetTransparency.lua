@@ -40,6 +40,21 @@ local function ReadAlpha(region)
     if ok and IsPublic(alpha) and type(alpha) == "number" and alpha >= 0 and alpha <= 1 then return alpha end
 end
 
+local function MatchesAlpha(live, requested, tolerance, quantized)
+    if live == nil then return false end
+    if math.abs(live - requested) <= tolerance then return true end
+    if not quantized or requested < 0 or requested > 1 then return false end
+
+    -- Action bar readback can round the requested opacity to an 8-bit value.
+    local rounded = math.floor(requested * 255 + .5) / 255
+    return math.abs(live - rounded) < .00001
+end
+
+function Transparency.GetBarOpacityTraceState(region)
+    local state = records[region]
+    if state then return state.lastAlpha, state.externalAlpha, state.alphaSource, state.reason, state.writing end
+end
+
 local function IsReduced(alpha)
     return alpha ~= nil and alpha < 1 - alphaTolerance
 end
@@ -108,7 +123,8 @@ end
 
 function Transparency.OnNativeActionBarAlphaSet(region, alpha)
     local state = records[region]
-    if not state or not IsPublic(alpha) or type(alpha) ~= "number" or ReadAlpha(region) ~= alpha then return end
+    if not state or not IsPublic(alpha) or type(alpha) ~= "number" or not (alpha >= 0 and alpha <= 1)
+        or not MatchesAlpha(ReadAlpha(region), alpha, 0, true) then return end
     A.OnManagedActionBarNativeAlphaSet(region, alpha)
     if not (state.lastAlpha or state.externalAlpha) then return end
     state.lastAlpha, state.externalAlpha, state.alphaSource = nil, nil, nil
@@ -220,7 +236,7 @@ function Transparency.GetUnavailableReason(region)
     if not alpha then return "Kong can't read the frame's opacity" end
     if state.lastAlpha then
         -- Animation and shared-method writes can bypass the frame's secure hook.
-        if math.abs(alpha - state.lastAlpha) > alphaTolerance then
+        if not MatchesAlpha(alpha, state.lastAlpha, alphaTolerance, state.actionBar) then
             state.externalAlpha = true
             QueueRefresh()
             return transparencyConflict
@@ -273,7 +289,7 @@ function Transparency.RestoreOwnedAlpha(fader, region, alpha, writeAlpha)
     if chatFrames[region] and (not IsPublic(region.isTemporary) or region.isTemporary) then return end
     local current = ReadAlpha(region)
     if current == nil then return false end
-    if math.abs(current - state.lastAlpha) > alphaTolerance then return end
+    if not MatchesAlpha(current, state.lastAlpha, alphaTolerance, state.actionBar) then return end
     return ApplyAlpha(state, fader, region, alpha, writeAlpha)
 end
 

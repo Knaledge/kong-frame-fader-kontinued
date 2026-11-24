@@ -20,6 +20,7 @@ CommandLine.lua
 AddonAttribution.lua
 MinimapPreset.lua
 FramePresetTransparency.lua
+Debug\BarOpacityTrace.lua
 AddonSupport\KongKontinued-Bartender4.lua
 Presets.lua
 Options.lua
