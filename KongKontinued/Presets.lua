@@ -27,7 +27,7 @@ local function FramePath(name)
     return "[" .. string.format("%q", name) .. "]"
 end
 
-local function FindEntries(section)
+local function FindEntries(section, sortForDisplay)
     local entries = {}
     if section.global then
         entries[1] = {name = section.global, title = section.title, region = _G[section.global],
@@ -40,7 +40,7 @@ local function FindEntries(section)
                 entries[#entries + 1] = {name = name, title = title, region = region,
                     disabledReason = not enabled and support.disabledReason or nil,
                     getUnavailableReason = transparency.GetUnavailableReason}
-            end)
+            end, sortForDisplay)
             return entries, support
         end
         for _, bar in ipairs(nativeBars) do
@@ -476,7 +476,7 @@ function A.RefreshPresetOptions()
     local y = math.max(introHeight, 16) + introTop + 17
     local resolvedFrames = {}
     for _, section in ipairs(sections) do
-        if not locked then section.entries, section.support = FindEntries(section) end
+        if not locked then section.entries, section.support = FindEntries(section, true) end
         local entries = section.entries or {}
         local noticeHeight = 0
         if section.noticeTitle then

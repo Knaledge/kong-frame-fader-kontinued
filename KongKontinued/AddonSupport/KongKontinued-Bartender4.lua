@@ -34,10 +34,35 @@ function Support.OwnsBar(bar)
     return IsPublic(bar.module) and bar.module == module and IsPublic(bar.id) and module.actionbars[tonumber(bar.id)] == bar
 end
 
-function Support.ForEachBar(callback)
+local function GetBarDisplayGroup(id)
+    if id == 2 then return 2 end -- Bonus Action Bar
+    if id >= 7 and id <= 10 then return 3 end -- Class Bars
+    return 1
+end
+
+local function GetDisplayBarOrder(module)
+    local displayNumbers = module.BLIZZARD_BAR_MAP
+    if not (Bartender4.Features and Bartender4.Features.MainlineBarLayout and displayNumbers) then
+        return module.LIST_ACTIONBARS
+    end
+
+    local ids = {}
+    for index, id in ipairs(module.LIST_ACTIONBARS) do ids[index] = id end
+    table.sort(ids, function(left, right)
+        local leftGroup, rightGroup = GetBarDisplayGroup(left), GetBarDisplayGroup(right)
+        if leftGroup ~= rightGroup then return leftGroup < rightGroup end
+        local leftNumber, rightNumber = displayNumbers[left] or left, displayNumbers[right] or right
+        if leftNumber ~= rightNumber then return leftNumber < rightNumber end
+        return left < right
+    end)
+    return ids
+end
+
+function Support.ForEachBar(callback, sortForDisplay)
     local module = GetActionBars()
     if not module or not module.actionbars or not module.LIST_ACTIONBARS then return end
-    for _, id in ipairs(module.LIST_ACTIONBARS) do
+    local ids = sortForDisplay and GetDisplayBarOrder(module) or module.LIST_ACTIONBARS
+    for _, id in ipairs(ids) do
         local bar = module.actionbars[id]
         -- Bartender4 creates frames only for bars it has enabled at least once this session.
         local name = "BT4Bar" .. id
