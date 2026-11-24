@@ -97,7 +97,7 @@ local function ContainsOnlyOpacityChanges(setting, entry)
     if not setting.preset or setting.index ~= FramePath(entry.name)
         or setting.overrideAlpha or setting.hideAtZeroAlpha or #setting ~= 2 then return false end
     for _, group in pairs(KongKontinued_Settings.Groups) do
-        if group[setting.index] ~= nil then return false end
+        if group[setting.index] ~= nil then return false, true end
     end
     local defaults = setting.TriggerDefaults
     for _, key in ipairs(fadeKeys) do
@@ -128,7 +128,8 @@ local function GetState(entry, resolvedFrames)
     if not setting then return reason and "unavailable" or "off", nil, reason, source end
     if KongKontinued_Frames[region] ~= setting then return "unavailable", nil, reason, source end
     if reason then return "suspended", setting, reason, source end
-    if not ContainsOnlyOpacityChanges(setting, entry) then return "advanced", setting end
+    local onlyOpacityChanges, inMouseoverGroup = ContainsOnlyOpacityChanges(setting, entry)
+    if not onlyOpacityChanges then return "advanced", setting, nil, nil, inMouseoverGroup end
     if setting.presetDisabled then return "off", setting end
     return "on", setting
 end
@@ -300,6 +301,38 @@ function A.SetTooltipText(tooltip, title, description)
     tooltip:AddLine(description, 1, 1, 1, true)
 end
 
+local function AddGroupedSliderTooltip(control, section)
+    local function ShowTooltip()
+        if not section.sliderDescription then return end
+        GameTooltip:SetOwner(control, "ANCHOR_RIGHT")
+        A.SetTooltipText(GameTooltip, section.title .. " transparency", section.sliderDescription)
+        if section.advancedSliderItems then GameTooltip:AddLine(section.advancedSliderItems, .75, .75, .75, true) end
+        if section.groupedSliderItems then GameTooltip:AddLine(section.groupedSliderItems, .75, .75, .75, true) end
+        GameTooltip:Show()
+    end
+    local function HideTooltip()
+        if GameTooltip:IsOwned(control) then GameTooltip:Hide() end
+    end
+
+    for _, widget in ipairs({control, control.Slider, control.Back, control.Forward}) do
+        widget:HookScript("OnEnter", ShowTooltip)
+        widget:HookScript("OnLeave", HideTooltip)
+    end
+    control:HookScript("OnHide", HideTooltip)
+
+    -- Disabled slider children may not receive mouse-motion scripts.
+    local hover = CreateFrame("Frame", nil, control)
+    hover:SetAllPoints(control)
+    hover:SetFrameLevel(control:GetFrameLevel() + 2)
+    hover:EnableMouse(true)
+    hover:SetScript("OnEnter", ShowTooltip)
+    hover:SetScript("OnLeave", HideTooltip)
+    hover:SetScript("OnHide", HideTooltip)
+    hover:Hide()
+    control.disabledTooltipHover = hover
+    control.showOpacityTooltip = ShowTooltip
+end
+
 local function ShowAdvancedConfigTooltip()
     A.SetTooltipText(SettingsTooltip, advancedTitle, advancedTooltip)
 end
@@ -453,6 +486,7 @@ local function CreateSection(section)
         control.label:SetJustifyH("CENTER")
         control.label:SetPoint("BOTTOM", control, "TOP", 0, 2)
         if control.Slider.SetNarrationLabelRegion then control.Slider:SetNarrationLabelRegion(control.label) end
+        if section.group then AddGroupedSliderTooltip(control, section) end
         section.sliders[index] = control
     end
     section.status = CreateLabel(frame, "", "GameFontHighlightSmall")
@@ -496,12 +530,18 @@ function A.RefreshPresetOptions()
         local sliderWidth = (width - 32) / 3
         local enabled, eligible, resettable, blocked = 0, 0, 0, 0
         local values, mixed = {}, {}
+        local advancedSliderItems = section.group and {}
+        local groupedSliderItems = section.group and {}
         local advancedConfig, unavailableReason, likelySource, showConfigWarning
         section.status:SetText("")
         if not section.group then section.config:SetEnabled(false) end
         for i, entry in ipairs(entries) do
-            local state, setting, reason, source = GetState(entry, resolvedFrames)
+            local state, setting, reason, source, inMouseoverGroup = GetState(entry, resolvedFrames)
             if state == "on" or state == "off" then eligible = eligible + 1 end
+            if section.group and state == "advanced" then
+                local items = inMouseoverGroup and groupedSliderItems or advancedSliderItems
+                items[#items + 1] = (entry.title:gsub("|", "||"))
+            end
             if section == actionBarSection and IsActionBarBlocked(state) then blocked = blocked + 1 end
             local resetMode = GetResetMode(entry, state, setting, not section.group)
             if resetMode then resettable = resettable + 1 end
@@ -606,6 +646,14 @@ function A.RefreshPresetOptions()
         end
         section.reset:SetEnabled(usable and resettable > 0)
         for i = #entries + 1, #section.rows do section.rows[i]:Hide() end
+        local slidersEnabled = usable and enabled > 0
+        if section.group then
+            section.sliderDescription = locked and "Transparency settings are unavailable during combat"
+                or slidersEnabled and "Changes only enabled presets that are available to edit"
+                or "No enabled presets are available for these sliders"
+            section.advancedSliderItems = #advancedSliderItems > 0 and "Advanced Config: " .. table.concat(advancedSliderItems, ", ") or nil
+            section.groupedSliderItems = #groupedSliderItems > 0 and "Mouseover group: " .. table.concat(groupedSliderItems, ", ") or nil
+        end
         for i, slider in ipairs(section.sliders) do
             local value = values[i]
             local display = mixed[i] and "Mixed" or value and string.format("%d%%", math.floor(value * 100 + .5)) or nil
@@ -614,8 +662,12 @@ function A.RefreshPresetOptions()
             slider:ClearAllPoints()
             slider:SetPoint("TOPLEFT", section.frame, "TOPLEFT", (i - 1) * (sliderWidth + 16), -sliderTop - noticeHeight)
             slider:SetValue(value and value * 100 or 0)
-            slider:SetEnabled(usable and enabled > 0)
-            slider.label:SetAlpha(usable and enabled > 0 and 1 or .5)
+            slider:SetEnabled(slidersEnabled)
+            slider.label:SetAlpha(slidersEnabled and 1 or .5)
+            if slider.disabledTooltipHover then
+                slider.disabledTooltipHover:SetShown(not slidersEnabled)
+                if GameTooltip:IsOwned(slider) then slider.showOpacityTooltip() end
+            end
         end
         local height = entryTop + 3 + noticeHeight
         if section.group then height = height + math.ceil(#entries / columnCount) * 33
