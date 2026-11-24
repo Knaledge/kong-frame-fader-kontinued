@@ -307,7 +307,7 @@ end
 
 local function ShowUnavailableTooltip(frame)
     if not frame.reason then return end
-    GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
+    GameTooltip:SetOwner(frame.checkbox, "ANCHOR_RIGHT")
     if frame.title then A.SetTooltipText(GameTooltip, frame.title, frame.reason)
     else GameTooltip:SetText(frame.reason, 1, 1, 1, 1, true) end
     if frame.source then GameTooltip:AddLine("Likely source: " .. frame.source, .75, .75, .75, true) end
@@ -319,11 +319,12 @@ local function ShowUnavailableTooltip(frame)
 end
 
 local function HideUnavailableTooltip(frame)
-    if GameTooltip:IsOwned(frame) then GameTooltip:Hide() end
+    if GameTooltip:IsOwned(frame.checkbox) then GameTooltip:Hide() end
 end
 
 local function CreateUnavailableTooltip(parent, checkbox, label)
     local frame = CreateFrame("Frame", nil, parent)
+    frame.checkbox = checkbox
     frame:SetPoint("TOPLEFT", checkbox, "TOPLEFT")
     frame:SetPoint("BOTTOMLEFT", checkbox, "BOTTOMLEFT")
     frame:SetPoint("RIGHT", label, "RIGHT", 2, 0)
@@ -340,7 +341,7 @@ local function UpdateUnavailableTooltip(tooltip, title, reason, source, showConf
     tooltip.title, tooltip.reason, tooltip.source = title, reason, source
     tooltip.showConfigWarning = showConfigWarning
     tooltip:SetShown(reason ~= nil)
-    if reason and GameTooltip:IsOwned(tooltip) then ShowUnavailableTooltip(tooltip) end
+    if reason and GameTooltip:IsOwned(tooltip.checkbox) then ShowUnavailableTooltip(tooltip) end
 end
 
 local function CreateFrameRow(section)
