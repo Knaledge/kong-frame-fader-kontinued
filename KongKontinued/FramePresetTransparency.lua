@@ -7,6 +7,7 @@ local records = setmetatable({}, {__mode = "k"})
 local chatFrames = setmetatable({}, {__mode = "k"})
 local chatTextRecords = setmetatable({}, {__mode = "k"})
 local alphaTolerance = .001
+local alphaReadbackTolerance = .00001
 local attributionInterval = 1
 local playerTransparencyConflict = "Another addon may be controlling player frame transparency"
 local targetTransparencyConflict = "Another addon may be controlling target frame transparency"
@@ -47,7 +48,7 @@ local function MatchesAlpha(live, requested, tolerance, quantized)
 
     -- Action bar readback can round the requested opacity to an 8-bit value.
     local rounded = math.floor(requested * 255 + .5) / 255
-    return math.abs(live - rounded) < .00001
+    return math.abs(live - rounded) < alphaReadbackTolerance
 end
 
 function Transparency.GetBarOpacityTraceState(region)
@@ -124,7 +125,7 @@ end
 function Transparency.OnNativeActionBarAlphaSet(region, alpha)
     local state = records[region]
     if not state or not IsPublic(alpha) or type(alpha) ~= "number" or not (alpha >= 0 and alpha <= 1)
-        or not MatchesAlpha(ReadAlpha(region), alpha, 0, true) then return end
+        or not MatchesAlpha(ReadAlpha(region), alpha, alphaReadbackTolerance, true) then return end
     A.OnManagedActionBarNativeAlphaSet(region, alpha)
     if not (state.lastAlpha or state.externalAlpha) then return end
     state.lastAlpha, state.externalAlpha, state.alphaSource = nil, nil, nil
@@ -237,6 +238,7 @@ function Transparency.GetUnavailableReason(region)
     if state.lastAlpha then
         -- Animation and shared-method writes can bypass the frame's secure hook.
         if not MatchesAlpha(alpha, state.lastAlpha, alphaTolerance, state.actionBar) then
+            if state.actionBar then state.lastAlpha = nil end
             state.externalAlpha = true
             QueueRefresh()
             return transparencyConflict
