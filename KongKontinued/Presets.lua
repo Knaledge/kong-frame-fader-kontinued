@@ -133,6 +133,10 @@ local function GetState(entry, resolvedFrames)
     return "on", setting
 end
 
+local function IsActionBarBlocked(state)
+    return state == "disabled" or state == "unavailable" or state == "suspended"
+end
+
 local function SetEnabled(entry, enabled)
     local state, setting = GetState(entry)
     if enabled and state == "off" then
@@ -305,6 +309,10 @@ local function ShowMixedPresetTooltip()
         "Some presets in this section are enabled. Select 'All' to enable the remaining available presets")
 end
 
+local function ShowAllActionBarsTooltip()
+    A.SetTooltipText(SettingsTooltip, "All action bar presets", "Toggle all available action bar presets together")
+end
+
 local function ShowUnavailableTooltip(frame)
     if not frame.reason then return end
     GameTooltip:SetOwner(frame.checkbox, "ANCHOR_RIGHT")
@@ -312,7 +320,7 @@ local function ShowUnavailableTooltip(frame)
     else GameTooltip:SetText(frame.reason, 1, 1, 1, 1, true) end
     if frame.source then GameTooltip:AddLine("Likely source: " .. frame.source, .75, .75, .75, true) end
     if frame.showConfigWarning then
-        if frame.source then GameTooltip:AddLine(" ") end
+        if frame.source or frame.separateConfigWarning then GameTooltip:AddLine(" ") end
         GameTooltip:AddLine("Config is still available, though transparency may behave unexpectedly", 1, 1, 1, true)
     end
     GameTooltip:Show()
@@ -322,9 +330,10 @@ local function HideUnavailableTooltip(frame)
     if GameTooltip:IsOwned(frame.checkbox) then GameTooltip:Hide() end
 end
 
-local function CreateUnavailableTooltip(parent, checkbox, label)
+local function CreateUnavailableTooltip(parent, checkbox, label, separateConfigWarning)
     local frame = CreateFrame("Frame", nil, parent)
     frame.checkbox = checkbox
+    frame.separateConfigWarning = separateConfigWarning
     frame:SetPoint("TOPLEFT", checkbox, "TOPLEFT")
     frame:SetPoint("BOTTOMLEFT", checkbox, "BOTTOMLEFT")
     frame:SetPoint("RIGHT", label, "RIGHT", 2, 0)
@@ -366,7 +375,7 @@ local function CreateFrameRow(section)
     row.label:SetPoint("RIGHT", row.config, "LEFT", -3, 4)
     row.label:SetWordWrap(false)
     if section.getUnavailableReason or section == actionBarSection then
-        row.unavailableTooltip = CreateUnavailableTooltip(row, row.check, row.label)
+        row.unavailableTooltip = CreateUnavailableTooltip(row, row.check, row.label, true)
     end
     row.status = CreateLabel(row, "", "GameFontHighlightSmall")
     row.status:SetTextColor(.65, .65, .65)
@@ -394,9 +403,10 @@ local function CreateSection(section)
         local enabled = section.mixed:IsShown() or check:GetChecked()
         if A.CanModifyProfiles() then
             local entries = FindEntries(section)
-            if section.group and section.getUnavailableReason then
+            if section == actionBarSection or (section.group and section.getUnavailableReason) then
                 for _, entry in ipairs(entries) do
-                    if select(3, GetState(entry)) then
+                    local state, _, reason = GetState(entry)
+                    if reason or (section == actionBarSection and IsActionBarBlocked(state)) then
                         A.RefreshPresetOptions()
                         return
                     end
@@ -409,7 +419,9 @@ local function CreateSection(section)
     -- Reserve room for the label and optional Config button.
     section.check:SetPoint("RIGHT", section.reset, "LEFT", -110, 0)
     section.checkLabel:SetPoint("LEFT", section.check, "RIGHT", 1, 0)
-    if section.getUnavailableReason then section.unavailableTooltip = CreateUnavailableTooltip(frame, section.check, section.checkLabel) end
+    if section.getUnavailableReason or section == actionBarSection then
+        section.unavailableTooltip = CreateUnavailableTooltip(frame, section.check, section.checkLabel)
+    end
     section.mixed = section.check:CreateTexture(nil, "OVERLAY")
     section.mixed:SetColorTexture(.82, .82, .82, 1)
     section.mixed:SetSize(10, 2)
@@ -490,6 +502,7 @@ function A.RefreshPresetOptions()
         for i, entry in ipairs(entries) do
             local state, setting, reason, source = GetState(entry, resolvedFrames)
             if state == "on" or state == "off" then eligible = eligible + 1 end
+            if section == actionBarSection and IsActionBarBlocked(state) then blocked = blocked + 1 end
             local resetMode = GetResetMode(entry, state, setting, not section.group)
             if resetMode then resettable = resettable + 1 end
             if state == "on" then
@@ -553,13 +566,31 @@ function A.RefreshPresetOptions()
         end
         if section.group then section.check:SetChecked(blocked == 0 and eligible > 0 and enabled == eligible) end
         local partiallyEnabled = section.group and blocked == 0 and enabled > 0 and enabled < eligible
-        section.mixed:SetShown(partiallyEnabled)
-        section.check:SetTooltipFunc(advancedConfig and ShowAdvancedConfigTooltip
-            or partiallyEnabled and ShowMixedPresetTooltip or nil)
+        local partiallyBlocked = section == actionBarSection and blocked > 0 and blocked < #entries
+        section.mixed:SetShown(partiallyEnabled or partiallyBlocked)
         local canToggle = usable and eligible > 0 and blocked == 0
+        section.check:SetTooltipFunc(advancedConfig and ShowAdvancedConfigTooltip
+            or partiallyEnabled and ShowMixedPresetTooltip
+            or section == actionBarSection and canToggle and ShowAllActionBarsTooltip or nil)
         section.check:SetEnabled(canToggle)
         local tooltip = section.unavailableTooltip
-        if tooltip and section.group then
+        if section == actionBarSection then
+            section.check:SetAlpha(canToggle and 1 or .55)
+            section.checkLabel:SetAlpha(canToggle and 1 or .55)
+            local title, reason
+            if blocked == #entries and blocked > 0 then
+                title, reason = "All action bars are blocked or disabled", "No action bars are available for presets"
+            elseif partiallyBlocked then
+                title = "Some action bars are blocked or disabled"
+                reason = eligible > 0 and "Toggle available bar presets individually"
+                    or "No action bars are available for presets"
+            elseif not canToggle then
+                title = "Action bar presets unavailable"
+                reason = locked and "Preset settings are unavailable during combat"
+                    or "No action bar presets are available to toggle"
+            end
+            UpdateUnavailableTooltip(tooltip, title, reason)
+        elseif tooltip and section.group then
             section.check:SetAlpha(blocked > 0 and .55 or 1)
             section.checkLabel:SetAlpha(blocked > 0 and .55 or 1)
             local title = blocked == #entries and "All chat frames are blocked" or "Some chat frames are blocked"

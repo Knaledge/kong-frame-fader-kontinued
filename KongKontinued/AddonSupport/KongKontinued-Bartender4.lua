@@ -2,8 +2,10 @@ local _, A = ...
 
 local Support = {
     noticeTitle = "Bartender4 detected",
-    noticeText = "Bartender4 has its own opacity and fade settings. To use Kong’s Idle, Mouseover, and Combat settings for a bar, "
-        .. "set its Bartender4 opacity to 100%, turn off Bartender4 fading for that bar, and enable the preset here. "
+    noticeText = "Bartender4 has its own opacity and fade settings. To use Kong's Idle, Mouseover, and Combat settings for a bar:\n"
+        .. "• Set the bar's Bartender4 opacity to 100%\n"
+        .. "• Turn off Bartender4 fading for that bar\n"
+        .. "• Enable the bar's preset in Kong\n\n"
         .. "If Bartender4 takes over opacity, Kong blocks the preset and keeps your settings. An enabled preset takes effect again when the bar is eligible.",
     disabledReason = "This bar is disabled in Bartender4",
 }
